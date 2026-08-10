@@ -46,7 +46,8 @@ async def captcha_visible(page):
 async def find_hold_target(page):
     """Use the target lookup proven by the Outlook registration flow.
     R25-F1: verifikasi nested iframe visible — #px-captcha sering DIV kosong
-    (inner iframe display:none). Cari tombol di dalam child frame dulu."""
+    (inner iframe display:none). Cari tombol di dalam child frame dulu.
+    Return (box, is_button, target_frame) — target_frame utk press via frame."""
     # 1) child frames: cari tombol press-and-hold di dalam iframe hsprotect
     #    (URL frame challenge pakai ch_ctx=1, bukan "challenge")
     for frame in page.frames:
@@ -60,7 +61,7 @@ async def find_hold_target(page):
                 if await el.count() > 0:
                     box = await el.bounding_box()
                     if box and box["width"] > 30 and box["height"] > 8:
-                        return box, True
+                        return box, True, frame
             except Exception:
                 pass
 
@@ -77,7 +78,7 @@ async def find_hold_target(page):
                     # cek display style
                     disp = await iframe.evaluate("el => getComputedStyle(el).display")
                     if disp != "none":
-                        return box, True
+                        return box, True, frame
         except Exception:
             pass
         try:
@@ -86,7 +87,7 @@ async def find_hold_target(page):
                 # R25-F1c: #px-captcha visible = tombol HIP (rendered captcha.js).
                 # JANGAN cek inner iframe — di HIP baru inner iframe selalu
                 # display:none (fallback lama), ngecek malah block return.
-                return box, True
+                return box, True, frame
         except Exception:
             pass
 
@@ -109,7 +110,7 @@ async def find_hold_target(page):
             if await el.count() > 0:
                 box = await el.bounding_box()
                 if box and box["width"] > 30 and box["height"] > 8:
-                    return box, True
+                    return box, True, None
     except Exception:
         pass
     # 3b) shadow DOM: HIP render pakai web component — pierce open shadow roots
@@ -127,7 +128,7 @@ async def find_hold_target(page):
             return null;
         }""")
         if btn:
-            return {"x": btn["x"], "y": btn["y"], "width": btn["w"], "height": btn["h"]}, True
+            return {"x": btn["x"], "y": btn["y"], "width": btn["w"], "height": btn["h"]}, True, None
     except Exception:
         pass
 
@@ -137,15 +138,15 @@ async def find_hold_target(page):
         for index in range(await frames.count()):
             box = await frames.nth(index).bounding_box()
             if box and box["width"] > 50 and box["height"] > 30:
-                return box, False
+                return box, False, None
     except Exception:
         pass
-    return None, False
+    return None, False, None
 
 
 async def press_and_hold(page, *, label="", press_number=1):
     """Run one registration-style hold attempt, or return None without a target."""
-    target_box, box_is_button = await find_hold_target(page)
+    target_box, box_is_button, target_frame = await find_hold_target(page)
     if not target_box:
         return None
 
@@ -184,16 +185,26 @@ async def press_and_hold(page, *, label="", press_number=1):
         pass
 
     try:
-        held, passed = await human_mouse.human_press_and_hold(
-            page,
-            cx,
-            cy,
-            is_done=hold_done,
-            # R25-RE: 5-8s sekali dengan jitter (bukan 11-15s ×5) — MS HIP
-            # risk decision cepat; hold panjang malah sinyal bot
-            max_hold=random.uniform(5.0, 8.0),
-            min_hold=1.2,
-        )
+        # R25-F1d: kalau target di dalam iframe, press harus via frame —
+        # page.mouse tidak menembus iframe (event ke parent document)
+        if target_frame is not None:
+            held, passed = await human_mouse.human_press_and_hold_frame(
+                page, target_frame, cx, cy,
+                is_done=hold_done,
+                max_hold=random.uniform(5.0, 8.0),
+                min_hold=1.2,
+            )
+        else:
+            held, passed = await human_mouse.human_press_and_hold(
+                page,
+                cx,
+                cy,
+                is_done=hold_done,
+                # R25-RE: 5-8s sekali dengan jitter (bukan 11-15s ×5) — MS HIP
+                # risk decision cepat; hold panjang malah sinyal bot
+                max_hold=random.uniform(5.0, 8.0),
+                min_hold=1.2,
+            )
     except Exception as exc:
         message = f"{type(exc).__name__}: {exc}"
         print(f"{label} human_press_and_hold err: {message}")
