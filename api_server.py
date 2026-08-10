@@ -69,7 +69,9 @@ async def _ttl_sweep():
                 stale.append(k)
         for k in stale:
             TASKS.pop(k, None)
-            _TASK_HANDLES.pop(k, None)
+            handle = _TASK_HANDLES.pop(k, None)
+            if handle is not None and not handle.done():
+                handle.cancel()  # R5: jangan biarkan task macet jalan di background
 
 
 @app.before_serving
