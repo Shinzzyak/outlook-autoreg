@@ -48,8 +48,11 @@ async def find_hold_target(page):
     R25-F1: verifikasi nested iframe visible — #px-captcha sering DIV kosong
     (inner iframe display:none). Cari tombol di dalam child frame dulu."""
     # 1) child frames: cari tombol press-and-hold di dalam iframe hsprotect
+    #    (URL frame challenge pakai ch_ctx=1, bukan "challenge")
     for frame in page.frames:
-        if "hsprotect.net" not in (frame.url or "") or "challenge" not in (frame.url or ""):
+        if "hsprotect.net" not in (frame.url or ""):
+            continue
+        if "challenge" not in (frame.url or "") and "ch_ctx" not in (frame.url or ""):
             continue
         for sel in ('button[role="button"]', "#px-captcha", 'button:has-text("Press and hold")'):
             try:
@@ -80,12 +83,10 @@ async def find_hold_target(page):
         try:
             box = await frame.locator("#px-captcha").first.bounding_box()
             if box and box["width"] > 30 and box["height"] > 8:
-                # verifikasi inner iframe visible
-                inner = frame.locator("#px-captcha iframe").first
-                if await inner.count() > 0:
-                    disp = await inner.evaluate("el => getComputedStyle(el).display")
-                    if disp != "none":
-                        return box, True
+                # R25-F1c: #px-captcha visible = tombol HIP (rendered captcha.js).
+                # JANGAN cek inner iframe — di HIP baru inner iframe selalu
+                # display:none (fallback lama), ngecek malah block return.
+                return box, True
         except Exception:
             pass
 
