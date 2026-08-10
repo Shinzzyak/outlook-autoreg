@@ -183,13 +183,18 @@ def tremor_offsets(n, dt=0.05, theta=6.0, sigma=None, clamp=None, seed=None):
 
 
 async def human_press_and_hold(page, cx, cy, is_done=None, max_hold=14.0,
-                               min_hold=1.5, check_interval=0.5, start=None):
+                               min_hold=1.5, check_interval=0.5, start=None,
+                               tremor=1.6):
     """拟人「按住验证」完整序列，返回 (held_seconds, passed_bool)。
 
     流程：WindMouse 逼近 (cx,cy) -> 落点前微停 -> mouse.down -> 按住期间走
     OU 抖动(有动量的生理震颤) -> 每 check_interval 秒轮询 is_done() -> 进度满
     后加一个真人反应延迟再 mouse.up。max_hold 兜底防卡死；min_hold 防刚加载的
     空隙误判通过就松手。
+
+    tremor: OU 抖动幅度 px。R25-F1g: HUMAN press-and-hold — mouseout/mouseleave
+    = EVENT END → bar drain/reset. Tremor > 0 bikin cursor keluar bounds tombol.
+    Untuk HUMAN captcha pakai tremor=0.0 (diam total saat hold).
 
     is_done: async callable -> bool，返回 True 表示验证已过(captcha 消失)。传
     你自己的 _captcha_visible 取反即可。为 None 时按满 max_hold 松手。
@@ -214,11 +219,13 @@ async def human_press_and_hold(page, cx, cy, is_done=None, max_hold=14.0,
         elapsed = loop.time() - t0
         if elapsed >= max_hold:
             break
-        if ti >= len(tre):
-            tre = tremor_offsets(64, dt=tick)
-            ti = 0
-        dx, dy = tre[ti]; ti += 1
-        await page.mouse.move(cx + dx, cy + dy)
+        if tremor > 0:
+            # R25-F1g: tremor=0 → diam total (mouseout = reset di HUMAN)
+            if ti >= len(tre):
+                tre = tremor_offsets(64, dt=tick)
+                ti = 0
+            dx, dy = tre[ti]; ti += 1
+            await page.mouse.move(cx + dx, cy + dy)
 
         # 进度满(captcha 消失)后加真人反应延迟再松手；至少按住 min_hold
         if is_done is not None and elapsed > min_hold and (elapsed - last_check) > check_interval:

@@ -165,17 +165,38 @@ async def press_and_hold(page, *, label="", press_number=1):
     print(f"{label} press #{press_number}: ({cx:.0f},{cy:.0f}){suffix}")
 
     async def hold_done():
+        # R25-F1g: deteksi visual done — class btn_done / #checkmark di frame
+        # hsprotect (captcha hilang = TERLAMBAT, ge() sudah jalan duluan).
+        # Fallback: POST /ocaptcha (sinyal sukses) atau captcha hilang.
+        try:
+            if post_seen["ocaptcha"] > 0:
+                return True
+            for f in page.frames:
+                if "hsprotect.net" not in (f.url or ""):
+                    continue
+                try:
+                    done = await f.locator(
+                        ".btn_done, #checkmark, .px-captcha-done, [class*='done']"
+                    ).count()
+                    if done and await f.locator(".btn_done, #checkmark, .px-captcha-done").count() > 0:
+                        return True
+                except Exception:
+                    pass
+        except Exception:
+            pass
         return not await captcha_visible(page)
 
     # R25-F1b: monitor POST ke collector hsprotect — kalau 0 POST dalam 3s,
     # target salah (event tidak sampai) → abort cepat, jangan hold buta.
-    post_seen = {"n": 0}
+    post_seen = {"n": 0, "ocaptcha": 0}
     original_send = None
 
     async def _monitor(resp):
         try:
             if "hsprotect.net/api" in (resp.url or "") and resp.request.method == "POST":
                 post_seen["n"] += 1
+                if "ocaptcha" in (resp.url or ""):
+                    post_seen["ocaptcha"] += 1
         except Exception:
             pass
 
@@ -184,19 +205,20 @@ async def press_and_hold(page, *, label="", press_number=1):
     except Exception:
         pass
 
+    # R25-F1g (HUMAN deobf): hold TANPA tremor — mouseout/mouseleave = EVENT END
+    # (Du). Tremor OU ±1.6px bikin cursor keluar bounds tombol → bar drain/reset.
+    # Release HANYA setelah done (class btn_done / #checkmark / POST ocaptcha).
     try:
-        # R25-F1d: patchright Frame tidak punya .mouse — page.mouse dengan
-        # koordinat viewport SUDAH menembus iframe (browser hit-testing).
-        # Yang penting: hold via page.mouse (registered = tombol biru).
         held, passed = await human_mouse.human_press_and_hold(
             page,
             cx,
             cy,
             is_done=hold_done,
-            # R25-RE: 5-8s sekali dengan jitter (bukan 11-15s ×5) — MS HIP
-            # risk decision cepat; hold panjang malah sinyal bot
-            max_hold=random.uniform(5.0, 8.0),
-            min_hold=1.2,
+            # R25-F1g: hold penuh sampai bar selesai (challengeTime server-driven,
+            # biasanya 8-10s). JANGAN release paksa — release = bar drain + reset.
+            max_hold=14.0,
+            min_hold=0.5,
+            tremor=0.0,  # kunci: diam total saat hold, jangan tremor
         )
     except Exception as exc:
         message = f"{type(exc).__name__}: {exc}"
