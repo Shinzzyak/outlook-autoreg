@@ -96,12 +96,37 @@ async def find_hold_target(page):
             'button:has-text("Appuyer et maintenir")',
             'button:has-text("按住")',
             'button:has-text("长按")',
+            'button:has-text("Press and")',
+            'button:has-text("hold")',
+            'button[data-testid*="hold" i]',
+            'button[id*="hold" i]',
+            'button[class*="hold" i]',
+            'button[class*="captcha" i]',
+            '[role="button"]:has-text("hold")',
         ):
             el = page.locator(sel).first
             if await el.count() > 0:
                 box = await el.bounding_box()
                 if box and box["width"] > 30 and box["height"] > 8:
                     return box, True
+    except Exception:
+        pass
+    # 3b) shadow DOM: HIP render pakai web component — pierce open shadow roots
+    try:
+        btn = await page.evaluate("""() => {
+            const hosts = document.querySelectorAll('*');
+            for (const h of hosts) {
+                if (!h.shadowRoot) continue;
+                const b = h.shadowRoot.querySelector('button');
+                if (b) {
+                    const r = b.getBoundingClientRect();
+                    if (r.width > 30 && r.height > 8) return {x: r.x, y: r.y, w: r.width, h: r.height};
+                }
+            }
+            return null;
+        }""")
+        if btn:
+            return {"x": btn["x"], "y": btn["y"], "width": btn["w"], "height": btn["h"]}, True
     except Exception:
         pass
 
