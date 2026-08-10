@@ -252,7 +252,25 @@ async def human_press_and_hold_frame(page, frame, cx, cy, is_done=None, max_hold
     cx,cy are viewport coords; converted to frame-relative internally.
     """
     # konversi viewport → frame-relative
-    fb = await frame.bounding_box()
+    # (patchright Frame tidak punya bounding_box — pakai iframe element di page)
+    fb = None
+    try:
+        iframes = page.locator('iframe[src*="hsprotect.net"]')
+        for i in range(await iframes.count()):
+            f = await iframes.nth(i).content_frame()
+            if f is not None and f == frame:
+                fb = await iframes.nth(i).bounding_box()
+                break
+    except Exception:
+        pass
+    if not fb:
+        # fallback: body bounding box di frame (koordinat relatif frame ≈ 0,0)
+        try:
+            body = await frame.locator("body").bounding_box()
+            if body:
+                fb = {"x": body["x"], "y": body["y"], "width": body["width"], "height": body["height"]}
+        except Exception:
+            pass
     if not fb:
         raise RuntimeError("frame bounding box unavailable")
     fx = cx - fb["x"]
