@@ -200,6 +200,44 @@ async def solve_turnstile():
     return jsonify({"task_id": task_id, "status": "queued"}), 202
 
 
+@app.post("/solve/shumei")
+async def solve_shumei():
+    """Solve Shumei (数美) CAPTCHA. Body: {organization, mode?, retry?, proxy?}"""
+    auth_err = await _check_auth()
+    if auth_err:
+        return auth_err
+    data = await request.get_json(silent=True) or {}
+    organization = data.get("organization") or os.environ.get("SHUMEI_ORGANIZATION")
+    if not organization:
+        return jsonify({"error": "organization required (or SHUMEI_ORGANIZATION env)"}), 400
+    mode = data.get("mode", "slide")
+    if mode not in ("slide", "auto_slide", "spatial_select", "icon_select"):
+        return jsonify({"error": f"unsupported mode: {mode}"}), 400
+    task_id = uuid.uuid4().hex[:12]
+    TASKS[task_id] = {"status": "queued", "created": _now()}  # T-05
+
+    async def _run():
+        from shumei_solver import solve_shumei as _solve
+        try:
+            async with _sem:
+                result = await asyncio.to_thread(
+                    _solve,
+                    organization=organization,
+                    mode=mode,
+                    retry=data.get("retry", 3),
+                    proxy=data.get("proxy"),
+                )
+            TASKS[task_id].update({"status": "done", "result": result})
+        except Exception as exc:
+            TASKS[task_id].update({"status": "error", "error": str(exc)[:300]})
+        finally:
+            _TASK_HANDLES.pop(task_id, None)
+
+    t = asyncio.create_task(_run())
+    _TASK_HANDLES[task_id] = t
+    return jsonify({"task_id": task_id, "status": "queued"}), 202
+
+
 @app.get("/solve/<task_id>")
 async def solve_status(task_id: str):
     auth_err = await _check_auth()
