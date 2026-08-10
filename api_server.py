@@ -99,7 +99,7 @@ async def register():
     async def _run():
         from register_outlook import register_one, BitBrowserClient, DEFAULT_PROXIES
 
-        os.environ.setdefault("OUTLOOK_NO_BITBROWSER", "1")
+        os.environ["OUTLOOK_NO_BITBROWSER"] = "1"  # P1-2: paksa VPS mode (bukan setdefault)
         proxy = data.get("proxy")
         mode = data.get("mode", "headless")
         if not proxy and not data.get("no_proxy"):

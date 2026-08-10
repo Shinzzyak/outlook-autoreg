@@ -948,6 +948,20 @@ async def _skip_optional_recovery_email(page, idx=0):
     detected = "/proofs/add" in current_url or any(marker in body for marker in page_markers)
     if not detected:
         return False, False
+    # P2-2: kalau halaman minta PHONE (bukan email), jangan skip — SMS path
+    # (_bind_required_recovery_email) harus handle; skip di sini = kode SMS
+    # tidak pernah ter-submit.
+    has_phone_field = False
+    try:
+        phone_input = page.locator(
+            'input[type="tel"], input[name*="phone" i], input[id*="phone" i]'
+        ).first
+        has_phone_field = await phone_input.count() > 0 and await phone_input.is_visible()
+    except Exception:
+        pass
+    if has_phone_field:
+        print(f"  {tag} [graph] halaman minta phone — tidak skip, SMS path aktif")
+        return True, False
     clicked = await _click_microsoft_action(
         page, labels=MS_SKIP_ACTION_LABELS, negative_labels=(),
         preferred_ids=("iShowSkip", "idBtn_Skip", "skipBtn", "Skip"),
@@ -1086,6 +1100,19 @@ async def _bind_required_recovery_email(page, state, idx=0):
             code = None
         if not code:
             print(f"  {tag} [graph] SMS code timed out")
+            await asyncio.to_thread(sms_client.cancel_order, state["sms_order"])
+            return True, False
+        # P1-1: cek ulang halaman masih di recovery (marker /proofs/add atau
+        # input kode masih visible) sebelum fill — jangan isi halaman salah
+        try:
+            body_now = " ".join(
+                (await page.locator("body").inner_text(timeout=3000)).split()
+            ).lower()
+            url_now = (page.url or "").lower()
+        except Exception:
+            body_now, url_now = "", ""
+        if "/proofs/add" not in url_now and "one-time" not in body_now and "verification" not in body_now:
+            print(f"  {tag} [graph] halaman sudah pindah — SMS code tidak di-fill")
             await asyncio.to_thread(sms_client.cancel_order, state["sms_order"])
             return True, False
         for selector in (

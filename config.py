@@ -29,11 +29,14 @@ def _load_dotenv(path=None):
                 key, _, val = line.partition("=")
                 key = key.strip()
                 val = val.strip()
-                # T-08: strip inline comment " #..." (python-dotenv compat),
-                # tapi pertahankan "#" tanpa spasi (trail#hash = nilai asli)
-                if " #" in val:
-                    val = val.split(" #", 1)[0]
-                val = val.strip().strip('"').strip("'")
+                # P2-1: kalau nilai di-quote, strip quote dan JANGAN strip
+                # komentar (dotenv rule: `KEY="a # b"` → `a # b`).
+                # Kalau tidak di-quote, strip inline comment " #...".
+                if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+                    val = val[1:-1]
+                else:
+                    if " #" in val:
+                        val = val.split(" #", 1)[0].rstrip()
                 if key and key not in os.environ:
                     os.environ[key] = val
     except Exception:
