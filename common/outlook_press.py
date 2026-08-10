@@ -32,9 +32,7 @@ async def captcha_visible(page):
                     return True
 
         frames = page.locator(
-            'iframe[src*="hsprotect.net"], '
-            'iframe[src*="arkose"], '
-            'iframe[src*="funcaptcha"]'
+            'iframe[src*="hsprotect.net"]'
         )
         for index in range(await frames.count()):
             box = await frames.nth(index).bounding_box()
