@@ -165,8 +165,10 @@ async def press_and_hold(page, *, label="", press_number=1):
             cx,
             cy,
             is_done=hold_done,
-            max_hold=random.uniform(11.0, 15.0),
-            min_hold=1.5,
+            # R25-RE: 5-8s sekali dengan jitter (bukan 11-15s ×5) — MS HIP
+            # risk decision cepat; hold panjang malah sinyal bot
+            max_hold=random.uniform(5.0, 8.0),
+            min_hold=1.2,
         )
     except Exception as exc:
         message = f"{type(exc).__name__}: {exc}"

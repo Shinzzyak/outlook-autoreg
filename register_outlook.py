@@ -2700,6 +2700,7 @@ _ALLOW_DOMAINS = {
     "px-cloud.net",          # PerimeterX CDN
     "px-cdn.net",            # PerimeterX CDN alt
     "client.px-cloud.net",   # PerimeterX client
+    "cfp.microsoft.com",     # R25-RE: MS HIP challenge (press-and-hold) endpoint
 }
 
 
