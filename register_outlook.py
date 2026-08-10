@@ -3186,6 +3186,8 @@ async def main():
                         help="auto=protocol→headless→browser fallback; or fix to one mode")
     parser.add_argument("--no-verify", action="store_true",
                         help="Do not verify Outlook login before writing successful accounts")
+    parser.add_argument("--cooldown", type=int, default=60,
+                        help="Min seconds between attempts on the SAME IP (anti rate-limit)")
     parser.add_argument("--confirm-before-register", action="store_true",
                         help="Auto-click confirmation on the signup page before filling")
     args = parser.parse_args()
@@ -3261,7 +3263,10 @@ async def main():
                 results[i] = {"status": "skip_blocked", "proxy": proxy}
                 return
             if i > 0:
-                await asyncio.sleep(random.uniform(2, 5))
+                # R25-P0-2b: cooldown antar-attempt pada IP sama — MS flag
+                # rate-based (kritikus Xbox: block naik setelah ~5-6 attempt
+                # beruntun, cooldown ~5 menit). Default 60s.
+                await asyncio.sleep(max(args.cooldown, random.uniform(2, 5)))
             print(f"\n{'#' * 50}")
             print(f"  Account #{i + 1}/{count}")
             print(f"{'#' * 50}")
