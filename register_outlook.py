@@ -3007,6 +3007,11 @@ async def register_one(bb, idx, proxy_str, results, results_lock, live_fh=None, 
     # OUTLOOK_WARMUP_TRAFFIC=1 untuk request benign (default on).
     try:
         warmup_s = float(os.environ.get("OUTLOOK_WARMUP_DELAY", "30") or "30")
+    except (TypeError, ValueError):
+        # R7-5-2: env invalid — log warning, jangan silent skip
+        print(f"  {tag} WARN: OUTLOOK_WARMUP_DELAY invalid — skip warmup")
+        warmup_s = 0
+    try:
         if warmup_s > 0:
             print(f"  {tag} warmup: menunggu {warmup_s:.0f}s (IP settle)...")
             await asyncio.sleep(warmup_s)

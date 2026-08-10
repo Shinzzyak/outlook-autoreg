@@ -131,7 +131,10 @@ async def human_move_to(page, x, y, start=None):
     if engine == "windmouse":
         path = windmouse_path(sx, sy, x, y)
     else:
-        from .sigmadrift import sigmadrift_path
+        try:
+            from .sigmadrift import sigmadrift_path  # R7-5-6: package import
+        except ImportError:
+            from common.sigmadrift import sigmadrift_path  # top-level fallback
         # SigmaDrift returns (x, y, t_ms) — pakai x,y saja; timing di-handle
         # sleep di bawah (jitter + bell)
         raw = sigmadrift_path(sx, sy, x, y)

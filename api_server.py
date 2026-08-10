@@ -96,6 +96,13 @@ async def register():
     timeout = data.get("timeout", 300)
     if not isinstance(timeout, (int, float)) or not (10 <= timeout <= 600):
         return jsonify({"error": "timeout must be 10..600"}), 400  # T-03
+    # R7-5-1: timeout < warmup (default 30s) = guaranteed timeout — clamp
+    try:
+        _warmup = float(os.environ.get("OUTLOOK_WARMUP_DELAY", "30") or "30")
+    except (TypeError, ValueError):
+        _warmup = 0
+    if _warmup > 0 and timeout < _warmup + 30:
+        timeout = _warmup + 30  # warmup + 30s margin register
 
     task_id = uuid.uuid4().hex[:12]
     TASKS[task_id] = {"status": "queued", "created": _now()}
