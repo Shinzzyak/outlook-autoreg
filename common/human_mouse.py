@@ -242,6 +242,43 @@ async def human_press_and_hold(page, cx, cy, is_done=None, max_hold=14.0,
 
 
 # ---------------------------------------------------------------------------
+# R25-P1-2: human_type — isi field char-by-char dengan jitter (bukan fill() instan).
+# Kecepatan isian manusia 80-250ms/karakter; fill() instan = sinyal bot.
+# ---------------------------------------------------------------------------
+async def human_type(page, locator, text, *, click_first=True, char_range=(0.06, 0.24), jitter_p=0.35):
+    """Klik field (kalau perlu), lalu ketik text char-by-char dengan delay acak.
+
+    char_range: delay per karakter (detik). jitter_p: probabilitas jeda ekstra
+    (berpikir) 0.3-1.2s di tengah — pola manusia.
+    """
+    if click_first:
+        try:
+            box = await locator.bounding_box()
+            if box:
+                cx, cy = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+                await human_move_to(page, cx, cy)
+                await page.mouse.click(cx, cy)
+                await asyncio.sleep(random.uniform(0.15, 0.4))
+            else:
+                await locator.click()
+                await asyncio.sleep(random.uniform(0.15, 0.4))
+        except Exception:
+            try:
+                await locator.click()
+                await asyncio.sleep(random.uniform(0.15, 0.4))
+            except Exception:
+                pass
+    for i, ch in enumerate(text):
+        await locator.press_sequentially(ch, delay=0)  # 1 char cepat
+        # delay per karakter (jitter)
+        await asyncio.sleep(random.uniform(*char_range))
+        # kadang 'berpikir' — pause panjang di tengah
+        if jitter_p > 0 and random.random() < jitter_p:
+            await asyncio.sleep(random.uniform(0.3, 1.2))
+    return True
+
+
+# ---------------------------------------------------------------------------
 # Self-test: 无法打真 PerimeterX，这里验证运动的统计特征像人不像机器人。
 # 运行:  python -m common.human_mouse   或   python common/human_mouse.py
 # ---------------------------------------------------------------------------

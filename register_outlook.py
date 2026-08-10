@@ -56,6 +56,7 @@ except Exception:
 # Outlook 注册和解锁共用同一套 PerimeterX 目标定位与拟人按压。
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import outlook_press as _outlook_press
+from common.human_mouse import human_type  # R25-P1-2: isi field char-by-char (jitter)
 
 # BitBrowser local API
 BITBROWSER_API = os.environ.get("BITBROWSER_API", "http://127.0.0.1:54345")
@@ -131,6 +132,10 @@ def verify_registered_outlook(email, password, tag=""):
     try:
         import requests as _requests
         s = _requests.Session()
+        # R25-P0-2: jangan ikut proxy env (Clash) — MS login verify harus direct;
+        # node proxy buruk/TLS-flaky → SEMUA akun valid dianggap FAIL & dibuang
+        s.trust_env = False
+        s.proxies = {"http": None, "https": None}
         s.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
         })
@@ -1876,14 +1881,15 @@ async def register_outlook(page, context, idx=0, captcha_early_abort=False):
             await email_input.fill("")
             await asyncio.sleep(0.3)
             if has_domain_dropdown:
-                await email_input.fill(prefix)
+                # R25-P1-2: human_type (jitter) bukan fill instan
+                await human_type(page, email_input, prefix, click_first=False)
                 try:
                     await domain_dropdown.select_option("outlook.com")
                 except Exception:
                     pass
                 print(f"  {tag} filled prefix: {prefix} (dropdown)")
             else:
-                await email_input.fill(email)
+                await human_type(page, email_input, email, click_first=False)
                 print(f"  {tag} filled email: {email}")
 
             await asyncio.sleep(0.5)
@@ -1899,6 +1905,11 @@ async def register_outlook(page, context, idx=0, captcha_early_abort=False):
             rejection = await _signup_email_rejected(page, email_input)
 
             if rejection == "taken" or ("already" in page_lower and "email" in page_lower) or "taken" in page_lower:
+                # R25-P0-1b: sudah pindah step (password/create) = email VALID —
+                # transisi SPA lambat bikin field masih visible. Jangan buang akun.
+                if "password" in page_lower or "create" in page_lower or "/password" in current_url:
+                    print(f"  {tag} email accepted (moved to next step)")
+                    break
                 prefix = random.choice(string.ascii_lowercase) + "".join(
                     random.choices(string.ascii_lowercase + string.digits, k=11)
                 )
@@ -1937,7 +1948,7 @@ async def register_outlook(page, context, idx=0, captcha_early_abort=False):
             await asyncio.sleep(1)
 
         if pwd_input and await pwd_input.count() > 0:
-            await pwd_input.fill(password)
+            await human_type(page, pwd_input, password, click_first=True)  # R25-P1-2
             print(f"  {tag} password filled")
             await asyncio.sleep(0.5)
 
