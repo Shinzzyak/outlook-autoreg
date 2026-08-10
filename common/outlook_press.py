@@ -185,26 +185,19 @@ async def press_and_hold(page, *, label="", press_number=1):
         pass
 
     try:
-        # R25-F1d: kalau target di dalam iframe, press harus via frame —
-        # page.mouse tidak menembus iframe (event ke parent document)
-        if target_frame is not None:
-            held, passed = await human_mouse.human_press_and_hold_frame(
-                page, target_frame, cx, cy,
-                is_done=hold_done,
-                max_hold=random.uniform(5.0, 8.0),
-                min_hold=1.2,
-            )
-        else:
-            held, passed = await human_mouse.human_press_and_hold(
-                page,
-                cx,
-                cy,
-                is_done=hold_done,
-                # R25-RE: 5-8s sekali dengan jitter (bukan 11-15s ×5) — MS HIP
-                # risk decision cepat; hold panjang malah sinyal bot
-                max_hold=random.uniform(5.0, 8.0),
-                min_hold=1.2,
-            )
+        # R25-F1d: patchright Frame tidak punya .mouse — page.mouse dengan
+        # koordinat viewport SUDAH menembus iframe (browser hit-testing).
+        # Yang penting: hold via page.mouse (registered = tombol biru).
+        held, passed = await human_mouse.human_press_and_hold(
+            page,
+            cx,
+            cy,
+            is_done=hold_done,
+            # R25-RE: 5-8s sekali dengan jitter (bukan 11-15s ×5) — MS HIP
+            # risk decision cepat; hold panjang malah sinyal bot
+            max_hold=random.uniform(5.0, 8.0),
+            min_hold=1.2,
+        )
     except Exception as exc:
         message = f"{type(exc).__name__}: {exc}"
         print(f"{label} human_press_and_hold err: {message}")
