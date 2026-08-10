@@ -49,8 +49,8 @@ curl -X POST localhost:8000/solve/turnstile -H 'Content-Type: application/json' 
 ```env
 CAPSOLVER_API_KEY=     # Arkose FunCaptcha solver (wajib kalau MS tampilkan Arkose)
 EZCAPTCHA_API_KEY=
-SMS5SIM_TOKEN=         # device challenge phone — 5sim.net (murah, JSON)
-SMSPOOL_KEY=           # fallback non-VoIP US
+SMS5SIM_TOKEN=         # device challenge phone — 5sim.net (murah, JSON, filter rate otomatis)
+SMSPOOL_KEY=           # fallback non-VoIP US (publish success rate 51%)
 OUTLOOK_GRAPH_RECOVERY_PROVIDER=yyds,gptmail   # recovery email temp chain
 OUTLOOK_NO_BITBROWSER=1                        # VPS mode
 ```
