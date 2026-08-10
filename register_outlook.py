@@ -2485,6 +2485,28 @@ def _proxy_for_playwright(proxy_str):
     return result
 
 
+def _probe_proxy_outlook(proxy_str, timeout_s=10):
+    """DD6-3: probe proxy thd signup.live.com SEBELUM dipakai — buang proxy
+    yang tidak bisa reach MS (IP banned / ASN flagged) lebih awal, jangan
+    buang 1 attempt register penuh (~3min).
+    Returns True kalau proxy bisa GET signup.live.com (status 200).
+    """
+    import requests as _rq
+    proxies = _proxy_for_requests(proxy_str)
+    if not proxies:
+        return False  # tanpa proxy — bukan probe (caller skip)
+    try:
+        r = _rq.get(
+            "https://signup.live.com/",
+            proxies=proxies,
+            timeout=timeout_s,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"},
+        )
+        return r.status_code == 200
+    except Exception:
+        return False
+
+
 def register_outlook_protocol(proxy_str=None, idx=0):
     """
     Register Outlook via pure HTTP requests — no browser, ~50KB per attempt.
@@ -2966,6 +2988,19 @@ async def register_one(bb, idx, proxy_str, results, results_lock, live_fh=None, 
     used_mode = None
     registration_profile_id = None
     registration_ws = ""
+
+    # DD6-3: probe proxy ke signup.live.com dulu — buang proxy yang tidak
+    # bisa reach MS (banned ASN / IP flagged) sebelum buang 1 attempt penuh.
+    # Hanya untuk mode yang pakai proxy; tanpa proxy (no_proxy) skip.
+    if proxy_str and not os.environ.get("OUTLOOK_SKIP_PROBE"):
+        try:
+            ok = await asyncio.to_thread(_probe_proxy_outlook, proxy_str)
+            if not ok:
+                print(f"  {tag} probe FAILED: proxy tidak bisa reach signup.live.com — skip")
+                return None, None
+            print(f"  {tag} probe OK: proxy reach signup.live.com")
+        except Exception as e:
+            print(f"  {tag} probe error: {str(e)[:100]} — lanjut tanpa probe")
 
     try:
         # ── 1. Protocol mode (pure HTTP, ~50KB) ──────────────────
