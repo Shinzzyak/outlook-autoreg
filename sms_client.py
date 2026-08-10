@@ -66,7 +66,9 @@ def get_code(order, max_wait=180, poll=5):
                     m = re.search(r"(?<!\d)(\d{6,8})(?!\d)", sms.get("text", ""))
                     if m:
                         return m.group(1)
-                return None
+                # T-12: RECEIVED tapi belum ada kode → SMS kedua bisa nyusul,
+                # jangan return None premature (order dibatalkan = refund padahal SMS nyusul)
+                print("  5sim RECEIVED tanpa kode — lanjut poll...")
         else:  # smspool
             r = requests.post(
                 f"{BASE_SMSPOOL}/sms/check",
@@ -84,19 +86,20 @@ def get_code(order, max_wait=180, poll=5):
 
 
 def cancel_order(order):
-    """Refund kalau timeout / nomor gagal. Jangan biarkan hang (kena rating)."""
+    """Refund kalau timeout / nomor gagal. Return True kalau sukses (T-13)."""
     try:
         if order["provider"] == "5sim":
-            requests.get(
+            r = requests.get(
                 f"{BASE_5SIM}/user/cancel/{order['order_id']}",
                 headers={"Authorization": "Bearer " + os.environ.get("SMS5SIM_TOKEN", "")},
                 timeout=30,
             )
         else:
-            requests.post(
+            r = requests.post(
                 f"{BASE_SMSPOOL}/sms/cancel",
                 data={"key": os.environ.get("SMSPOOL_KEY", ""), "orderid": order["order_id"]},
                 timeout=30,
             )
+        return r.status_code == 200
     except Exception:
-        pass
+        return False

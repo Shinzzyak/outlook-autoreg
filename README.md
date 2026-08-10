@@ -15,7 +15,7 @@ headless tanpa BitBrowser.
 | **PerimeterX press-and-hold** | `common/outlook_press.py` — WindMouse + OU tremor, tahan 11–15s |
 | **Arkose FunCaptcha solver** | CapSolver / EZ-Captcha + inject token (CE_READY/fc-token/fcCallback) |
 | **Turnstile solver** | `turnstile/` — checkbox click + token extraction (untuk situs downstream) |
-| **Device challenge** | recovery email temp (YYDS/GPTMail/MoeMail) + SMS (5sim/SMSPool) |
+| **Device challenge** | recovery email temp (YYDS/GPTMail/MoeMail) + SMS (5sim/SMSPool, wire di `_bind_required_recovery_email`) |
 | **Graph OAuth token** | `graph_tokens.py` — refresh_token via Thunderbird public client |
 | **API server** | `api_server.py` — Quart: `/register`, `/solve/turnstile`, `/solve/arkose` |
 
@@ -28,10 +28,10 @@ python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 # CLI — register 5 akun, serial, tanpa BitBrowser (VPS mode)
 OUTLOOK_NO_BITBROWSER=1 ./venv/bin/python register_outlook.py --count 5 --no-proxy
 
-# API server
-OUTLOOK_NO_BITBROWSER=1 ./venv/bin/python api_server.py --port 8000
-curl -X POST localhost:8000/register -H 'Content-Type: application/json' \
-  -d '{"count":1,"proxy":"http://user:pass@host:port"}'
+# API server (auth opsional: API_TOKEN=secret; concurrency REG_MAX_CONCURRENCY=2)
+API_TOKEN= OUTLOOK_NO_BITBROWSER=1 ./venv/bin/python api_server.py --port 8000
+curl -X POST localhost:8000/register -H 'Authorization: Bearer '$API_TOKEN -H 'Content-Type: application/json' \
+  -d '{"count":1,"proxy":"http://user:pass@host:port"}'   # → 202 + task_id, poll GET /register/<id>
 curl -X POST localhost:8000/solve/turnstile -H 'Content-Type: application/json' \
   -d '{"url":"https://example.com","sitekey":"0x4AAAA..."}'
 ```
@@ -41,7 +41,7 @@ curl -X POST localhost:8000/solve/turnstile -H 'Content-Type: application/json' 
 | Mode | Kapan |
 |---|---|
 | `--mode headless` (default di VPS) | Tanpa BitBrowser, patchright stealth — disarankan VPS |
-| `--mode protocol` | Pure-HTTP signup (tanpa browser) |
+| `--mode protocol` | Pure-HTTP signup — **N/A**: signup.live.com sekarang SPA, HTTP-only tidak bisa (T-10) |
 | `--mode browser` | BitBrowser (butuh GUI lokal + BitBrowser API) |
 
 ## Konfigurasi (`.env`)

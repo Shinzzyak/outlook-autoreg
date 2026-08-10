@@ -1033,6 +1033,77 @@ async def _bind_required_recovery_email(page, state, idx=0):
         has_email = await email_input.count() > 0 and await email_input.is_visible()
     except Exception:
         has_email = False
+
+    # T-04: phone field (no email input) → SMS via 5sim/SMSPool
+    phone_input = page.locator(
+        'input[type="tel"], input[name*="phone" i], input[id*="phone" i], '
+        'input[name*="mobile" i], input[id*="mobile" i]'
+    ).first
+    try:
+        has_phone = await phone_input.count() > 0 and await phone_input.is_visible()
+    except Exception:
+        has_phone = False
+    if has_phone and not state.get("sms_order"):
+        import sms_client
+        try:
+            country = os.environ.get("SMS_COUNTRY", "usa")
+            order = await asyncio.to_thread(sms_client.request_sms, "microsoft", country)
+            state["sms_order"] = order
+            print(f"  {tag} [graph] SMS via {order['provider']}: {order['phone']}")
+        except Exception as exc:
+            print(f"  {tag} [graph] SMS request failed: {str(exc)[:120]}")
+            return True, False
+    if has_phone and state.get("sms_order") and not state.get("sms_submitted"):
+        try:
+            await phone_input.fill(state["sms_order"]["phone"])
+            clicked = await _click_microsoft_action(
+                page, preferred_ids=(
+                    "iNext", "idSubmit_SAOTCSend", "idBtn_SAOTCSend",
+                    "continueButton",
+                )
+            )
+            if not clicked:
+                await phone_input.press("Enter")
+            state["sms_submitted"] = True
+            state["sms_requested_at"] = time.time()
+            await asyncio.sleep(2)
+        except Exception as exc:
+            print(f"  {tag} [graph] SMS submit failed: {str(exc)[:120]}")
+            return True, False
+    if has_phone and state.get("sms_submitted") and not state.get("sms_code_task"):
+        import sms_client
+        state["sms_code_task"] = asyncio.create_task(asyncio.to_thread(
+            sms_client.get_code, state["sms_order"], max_wait=180, poll=5,
+        ))
+        return True, True
+    if has_phone and state.get("sms_code_task"):
+        task = state["sms_code_task"]
+        if not task.done():
+            return True, True
+        try:
+            code = task.result()
+        except Exception:
+            code = None
+        if not code:
+            print(f"  {tag} [graph] SMS code timed out")
+            await asyncio.to_thread(sms_client.cancel_order, state["sms_order"])
+            return True, False
+        for selector in (
+            'input[autocomplete="one-time-code"], input[name*="otc" i], '
+            'input[id*="otc" i], input[name*="code" i], input[id*="code" i]'
+        ):
+            try:
+                c = page.locator(selector).first
+                if await c.count() > 0 and await c.is_visible():
+                    await c.fill(code)
+                    await page.keyboard.press("Enter")
+                    print(f"  {tag} [graph] SMS code submitted")
+                    await asyncio.to_thread(sms_client.cancel_order, state["sms_order"])
+                    return True, True
+            except Exception:
+                continue
+        return True, False
+
     if has_email and not state.get("email_submitted"):
         if not state.get("mailbox"):
             try:

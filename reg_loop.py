@@ -172,51 +172,6 @@ def _rotate_excluded(client, group):
     return ex
 
 
-def maybe_rotate(client, group, strategy="round_robin", max_latency_ms=6000,
-                 mixed_port=7897):
-    """切到下一个节点并验证出口 IP 变了。按名称顺序平等轮换：在 _ordered_nodes 排好
-    的列表里挑第一个本会话没试过的节点，全试过则重置循环。排除 CN/直连。"""
-    if client is None or not group:
-        return None
-    try:
-        excluded = _rotate_excluded(client, group)
-        ordered = _ordered_nodes(client, group, excluded)
-        if not ordered:
-            log("no usable node after exclude", "WARN")
-            return None
-        # 挑【第一个本会话没试过的】节点，全试过则重置循环。
-        global _TRIED_NODES
-        nxt = next((n for n in ordered if n not in _TRIED_NODES), None)
-        if nxt is None:           # 一轮全试过，重置再来
-            _TRIED_NODES = set()
-            nxt = ordered[0]
-        _TRIED_NODES.add(nxt)
-        ip_before = None
-        try:
-            ip_before = _clash_verge.public_ip(timeout=5, mixed_port=mixed_port)
-        except Exception:
-            pass
-        client.switch(group, nxt)
-        try:
-            client.close_connections()
-        except Exception:
-            pass
-        time.sleep(1.5)
-        ip_after = None
-        try:
-            ip_after = _clash_verge.public_ip(timeout=5, mixed_port=mixed_port)
-        except Exception:
-            pass
-        changed = bool(ip_before and ip_after and ip_before != ip_after)
-        log(f"clash rotate -> {nxt} IP {ip_before}->{ip_after} "
-            f"{'changed' if changed else 'UNCHANGED'}")
-        return {"ok": True, "next": nxt, "ip_changed": changed,
-                "ip_before": ip_before, "ip_after": ip_after}
-    except Exception as e:
-        log(f"clash rotate err: {type(e).__name__}: {e}", "WARN")
-        return None
-
-
 def _probe_delay(client, node, timeout_ms):
     """探测单节点延迟(ms)，超时/出错返回 None。用 Clash 自带 /delay(直接测该节点，
     无需先 switch)。"""
@@ -299,7 +254,9 @@ def maybe_rotate_verified(client, group, mixed_port=7897):
                     "ip_before": ip_before, "ip_after": None}
 
         # 3) 切到选中的可用节点并验出口 IP
-        _TRIED_NODES.add(best)
+        # T-07: node SUKSES dihapus dari _TRIED_NODES (bisa dipakai lagi nanti);
+        # node timeout tetap di set — tidak di-probe ulang tiap putaran.
+        _TRIED_NODES.discard(best)
         client.switch(group, best)
         try:
             client.close_connections()
@@ -846,9 +803,11 @@ def main():
             break
         ps = count_pool()
         if args.target_pool and ps >= args.target_pool:
-            log(f"pool at target ({ps}/{args.target_pool}) — sleep {args.sleep_when_full}s")
-            time.sleep(args.sleep_when_full)
-            continue
+            # T-14: target tercapai = misi selesai (help text bilang "stop
+            # registering once pool has this many"), bukan sleep forever.
+            log(f"pool at target ({ps}/{args.target_pool}) — exit "
+                f"(success={succ}, fail={failed})")
+            break
         # Rotate Clash node before each attempt so MS PX sees a fresh IP.
         # --no-rotate / OUTLOOK_NO_ROTATE 开启时跳过轮换，固定用当前节点。
         if not no_rotate:

@@ -28,6 +28,11 @@ def _load_dotenv(path=None):
                     continue
                 key, _, val = line.partition("=")
                 key = key.strip()
+                val = val.strip()
+                # T-08: strip inline comment " #..." (python-dotenv compat),
+                # tapi pertahankan "#" tanpa spasi (trail#hash = nilai asli)
+                if " #" in val:
+                    val = val.split(" #", 1)[0]
                 val = val.strip().strip('"').strip("'")
                 if key and key not in os.environ:
                     os.environ[key] = val

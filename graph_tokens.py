@@ -429,15 +429,23 @@ def get_graph_token(email, password, idx=0):
                 # Don't follow redirect to localhost (it will fail)
                 resp2 = session.post(form_action, data=form_data, timeout=30, allow_redirects=False)
                 # Follow redirects but catch localhost
+                hop = 0  # T-06: guard redirect-to-self loop
                 while resp2.status_code in (301, 302, 303, 307):
+                    hop += 1
+                    if hop > 10:
+                        print(f"  {tag} redirect loop (>10 hops) in form submit")
+                        resp2 = None
+                        break
                     loc = _redirect_url(resp2, resp2.headers.get("Location", ""))
                     if "localhost" in loc:
                         resp2 = type('R', (), {'url': loc, 'text': '', 'status_code': 200})()
                         break
-                    elif loc:
+                    elif loc and loc != resp2.url:
                         resp2 = session.get(loc, timeout=30, allow_redirects=False)
                     else:
                         break
+                if resp2 is None:
+                    break
                 continue
 
             print(f"  {tag} FAIL: stuck at {url[:100]} (status={resp2.status_code})")
