@@ -112,7 +112,14 @@ def windmouse_path(x0, y0, x1, y1, gravity=_WM_GRAVITY, wind=_WM_WIND,
 
 
 async def human_move_to(page, x, y, start=None):
-    """沿 WindMouse 轨迹把鼠标移到 (x, y)，每步 sleep 变速（两端慢、中段快）。"""
+    """Move mouse to (x, y) with human-like trajectory.
+
+    DD9: SigmaDrift path (biomechanical: sigma-lognormal velocity, 2
+    sub-movements, Fitts-compliant) — upgrade dari WindMouse (15 jagged
+    sub-movements). Env HUMAN_MOUSE_ENGINE=windmouse untuk fallback.
+    """
+    import os as _os
+    engine = _os.environ.get("HUMAN_MOUSE_ENGINE", "sigmadrift")
     if start is None:
         # 未知当前位置：从一个偏离目标的随机点起步（真人不会瞬移到按钮上）
         sx = x + random.uniform(-260, 260)
@@ -121,7 +128,14 @@ async def human_move_to(page, x, y, start=None):
         await asyncio.sleep(random.uniform(0.04, 0.12))
     else:
         sx, sy = start
-    path = windmouse_path(sx, sy, x, y)
+    if engine == "windmouse":
+        path = windmouse_path(sx, sy, x, y)
+    else:
+        from .sigmadrift import sigmadrift_path
+        # SigmaDrift returns (x, y, t_ms) — pakai x,y saja; timing di-handle
+        # sleep di bawah (jitter + bell)
+        raw = sigmadrift_path(sx, sy, x, y)
+        path = [(p[0], p[1]) for p in raw]
     n = len(path)
     for i, (px, py) in enumerate(path):
         # 亚像素抖动，避免整数网格化的机器人痕迹
@@ -132,7 +146,7 @@ async def human_move_to(page, x, y, start=None):
         bell = math.sin(math.pi * frac)          # 0->1->0
         delay = random.uniform(0.004, 0.010) + (1.0 - bell) * random.uniform(0.004, 0.018)
         await asyncio.sleep(delay)
-    _debug(f"move_to ({x:.0f},{y:.0f}) via {n} pts")
+    _debug(f"move_to ({x:.0f},{y:.0f}) via {n} pts ({engine})")
     return path
 def tremor_offsets(n, dt=0.05, theta=6.0, sigma=None, clamp=None, seed=None):
     """生成 n 个自相关的按住微抖动 (dx, dy)，用 Ornstein-Uhlenbeck 过程。
