@@ -326,8 +326,18 @@ def get_graph_token(email, password, idx=0):
         auth_code = None
         for step in range(15):
             # Handle HTTP redirects
+            hop = 0  # P1-12: redirect loop guard — proxy bisa strip Location
             while resp2.status_code in (301, 302, 303, 307):
+                hop += 1
+                if hop > 10:
+                    print(f"  {tag} redirect loop (>10 hops), aborting")
+                    resp2 = None
+                    break
                 loc = _redirect_url(resp2, resp2.headers.get("Location", ""))
+                if not loc or loc == resp2.url:  # P1-12: loc kosong/sama → stop
+                    print(f"  {tag} empty/self redirect, aborting")
+                    resp2 = None
+                    break
                 if "localhost" in loc and "code=" in loc:
                     resp2 = type('R', (), {'url': loc, 'text': '', 'status_code': 200})()
                     break
@@ -335,6 +345,8 @@ def get_graph_token(email, password, idx=0):
                     resp2 = type('R', (), {'url': loc, 'text': '', 'status_code': 200})()
                     break
                 resp2 = session.get(loc, timeout=30, allow_redirects=False)
+            if resp2 is None:
+                break
 
             url = resp2.url
             text = resp2.text if hasattr(resp2, 'text') and resp2.text else ''

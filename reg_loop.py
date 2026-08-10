@@ -498,7 +498,7 @@ def _rotate_graph_retry_egress():
 def extract_graph_for_account(email, password, attempts=3):
     """Return Graph token data for a freshly registered Outlook account."""
     try:
-        from tools.extract_graph_tokens import get_graph_token
+        from graph_tokens import get_graph_token
         for attempt in range(attempts):
             res = get_graph_token(email, password)
             if res and res.get("refresh_token"):
@@ -557,7 +557,7 @@ def append_to_emails_pool(email, password):
     if graph is not None:
         return append_graph_account_to_emails_pool(email, password, graph)
     try:
-        from tools.extract_graph_tokens import get_graph_token
+        from graph_tokens import get_graph_token
         # 抽取经代理偶发 TLS 抖动(SSLEOFError)，单试一次一抖就回退 fresh、白丢 token 快路；
         # 这里重试 3 次(短退避)，绝大多数抖动二/三次就过。
         res = None

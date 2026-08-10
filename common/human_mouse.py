@@ -84,7 +84,9 @@ def windmouse_path(x0, y0, x1, y1, gravity=_WM_GRAVITY, wind=_WM_WIND,
             wx /= sqrt3
             wy /= sqrt3
             if max_step < 3:
-                max_step = random.random() * 3.0 + 3.0
+                # P1-6: jangan reset ke 3-6 (clamp longgar, velocity spike di
+                # fase akhir) — cukup panjangkan proporsional, tetap ketat
+                max_step = max(0.5, max_step / sqrt5)
             else:
                 max_step /= sqrt5
 

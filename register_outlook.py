@@ -1395,7 +1395,7 @@ async def _extract_graph_token_device(page, email, password, idx=0):
 def extract_graph_token_http(email, password, idx=0, attempts=3):
     """Extract Graph refresh_token through the shared pure-HTTP OAuth flow."""
     try:
-        from tools.extract_graph_tokens import get_graph_token
+        from graph_tokens import get_graph_token  # P0-3: file di root, bukan tools/
     except Exception as exc:
         print(f"  [#{idx}] [graph] import error: {exc}")
         return None
@@ -2021,6 +2021,23 @@ async def register_outlook(page, context, idx=0, captcha_early_abort=False):
         async def _captcha_visible():
             return await _outlook_press.captcha_visible(page)
 
+        # P0-1: deteksi Arkose (FunCaptcha) terpisah — kalau muncul, solve
+        # via CapSolver/EZ-Captcha + inject token, BUKAN press buta 18s
+        async def _arkose_present():
+            try:
+                for f in page.frames:
+                    u = (f.url or "").lower()
+                    if "arkose" in u or "funcaptcha" in u:
+                        box = await f.frame_element().bounding_box()
+                        if box and box["width"] > 30 and box["height"] > 30:
+                            return True
+            except Exception:
+                pass
+            return False
+
+        arkose_solved = False
+        arkose_attempts = 0
+
         # headless: 90 s captcha window; browser: 240 s (multiple press rounds)
         _captcha_rounds = 30 if captcha_early_abort else 80
         # When max_press is small, shrink the wait loop too — otherwise we'd
@@ -2124,6 +2141,41 @@ async def register_outlook(page, context, idx=0, captcha_early_abort=False):
                 )
                 await asyncio.sleep(3)
                 continue
+
+            # P0-1: Arkose FunCaptcha — solve via API + inject token
+            if await _arkose_present() and arkose_attempts < 2 and not arkose_solved:
+                arkose_attempts += 1
+                print(f"  {tag} Arkose FunCaptcha detected — solving via API...")
+                try:
+                    token = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            solve_arkose_capsolver,
+                            public_key=MS_SIGNUP_ARKOSE_KEY,
+                            page_url="https://signup.live.com/",
+                            max_wait=90,
+                        ),
+                        timeout=100,
+                    )
+                    if not token:
+                        token = await asyncio.wait_for(
+                            asyncio.to_thread(
+                                solve_funcaptcha_ezcaptcha,
+                                public_key=MS_SIGNUP_ARKOSE_KEY,
+                                page_url="https://signup.live.com/",
+                                max_wait=90,
+                            ),
+                            timeout=100,
+                        )
+                    if token:
+                        injected = await inject_arkose_token(page, token)
+                        if injected:
+                            print(f"  {tag} Arkose token injected ✓")
+                            arkose_solved = True
+                            await asyncio.sleep(4)
+                            continue
+                    print(f"  {tag} Arkose solve gagal (attempt {arkose_attempts}/2)")
+                except Exception as exc:
+                    print(f"  {tag} Arkose solver err: {str(exc)[:100]}")
 
             # PerimeterX press-and-hold
             if press_count < max_press:

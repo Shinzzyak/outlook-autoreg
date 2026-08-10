@@ -88,7 +88,8 @@ async def register():
     t = asyncio.create_task(_run())
     TASKS[task_id]["task"] = t
     try:
-        await asyncio.wait_for(asyncio.shield(t), timeout=data.get("timeout", 300) + 30)
+        # P1-4: tanpa shield — wait_for timeout beneran cancel task
+        await asyncio.wait_for(t, timeout=data.get("timeout", 300) + 30)
     except asyncio.TimeoutError:
         t.cancel()
         try:
