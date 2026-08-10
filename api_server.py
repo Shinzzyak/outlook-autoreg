@@ -120,10 +120,11 @@ async def register():
         try:
             # R5-6: pacing global antar akun — MS flag based on account patterns,
             # bukan cuma per-IP; minimal gap 5s antar register
+            # R25-F7: gap 8-12s per proxy — IP sama jangan 2 register < 10s
             async with _pacing_lock:
                 _last_start = getattr(_pacing_lock, "_last_start", 0.0)
                 now = time.monotonic()
-                gap = 5.0 - (now - _last_start)
+                gap = (5.0 if not proxy else 8.0) - (now - _last_start)
                 if gap > 0:
                     await asyncio.sleep(gap)
                 _pacing_lock._last_start = time.monotonic()

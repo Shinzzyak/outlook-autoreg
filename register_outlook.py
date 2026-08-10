@@ -102,6 +102,16 @@ MS_SIGNUP_ARKOSE_KEY = "B7D8911C-5CC8-A9A3-35B0-554ACEE604DA"
 OUTPUT_DIR = "outlook_accounts"
 SCREENSHOT_DIR = "screenshots_outlook"
 
+# R25-F2: proxy yang kena block page — cooldown 2 menit (jangan dipakai ulang)
+_blocked_ips_ts: dict = {}
+
+def _proxy_blocked(proxy: str) -> bool:
+    """Cek proxy ada di blocklist + belum expired (120s)."""
+    return _blocked_ips_ts.get(proxy, 0) > time.time()
+
+def _mark_proxy_blocked(proxy: str, ttl: float = 120.0):
+    _blocked_ips_ts[proxy] = time.time() + ttl
+
 # Registration timeout per account (seconds)
 REGISTER_TIMEOUT = 300
 VERIFY_AFTER_REGISTER = True
@@ -138,9 +148,14 @@ def verify_registered_outlook(email, password, tag=""):
         # R5-7: halaman login sekarang SPA — PPFT di-embed sebagai JSON escape
         # sFTTag\":\"<input type=\\\"hidden\\\" name=\\\"PPFT\\\" ... value=\\\"...\\\">
         ppft = None
-        m = _re.search(r'value=.{0,5}([A-Za-z0-9!*_=@#%&+.\-]+)', r.text)
-        if m:
+        # R25-F5: regex ketat — cari input name="PPFT" dulu, value 256 char + prefix Ol!
+        m = _re.search(r'name=["\']PPFT["\'][^>]*value=["\']([^"\']+)["\']', r.text)
+        if m and len(m.group(1)) >= 50:
             ppft = m
+        if not ppft:
+            m = _re.search(r'value=["\'](Ol![A-Za-z0-9!*_=@#%&+.\-]{100,})["\']', r.text)
+            if m:
+                ppft = m
         if not ppft:
             # Halaman mungkin minta consent/2FA — anggap reachable, bukan verified
             print(f"  {tag} verify SKIP: no login form (2FA/consent)")
@@ -2271,6 +2286,11 @@ async def register_outlook(page, context, idx=0, captcha_early_abort=False):
             ]):
                 print(f"  {tag} BLOCKED: account creation blocked by Microsoft")
                 await page.screenshot(path=f"{SCREENSHOT_DIR}/outlook_{idx}_blocked.png")
+                # R25-F2: tandai IP utk cooldown — jangan pakai IP sama 2 menit
+                try:
+                    _blocked_ips.add(_current_proxy_ip())
+                except Exception:
+                    pass
                 return None, None
 
             # FIDO/passkey - skip
@@ -3207,9 +3227,14 @@ async def main():
 
     async def run_one(i):
         async with sem:
+            proxy = proxies[i]
+            # R25-F2: skip proxy yang kena block cooldown — ganti ke proxy lain
+            if _proxy_blocked(proxy):
+                print(f"  Account #{i + 1} SKIP: proxy {proxy} kena block cooldown (120s)")
+                results[i] = {"status": "skip_blocked", "proxy": proxy}
+                return
             if i > 0:
                 await asyncio.sleep(random.uniform(2, 5))
-            proxy = proxies[i]
             print(f"\n{'#' * 50}")
             print(f"  Account #{i + 1}/{count}")
             print(f"{'#' * 50}")

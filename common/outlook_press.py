@@ -46,19 +46,68 @@ async def captcha_visible(page):
 
 
 async def find_hold_target(page):
-    """Use the target lookup proven by the Outlook registration flow."""
+    """Use the target lookup proven by the Outlook registration flow.
+    R25-F1: verifikasi nested iframe visible — #px-captcha sering DIV kosong
+    (inner iframe display:none). Cari tombol di dalam child frame dulu."""
+    # 1) child frames: cari tombol press-and-hold di dalam iframe hsprotect
     for frame in page.frames:
-        if frame == page.main_frame or "hsprotect.net" not in (frame.url or ""):
+        if "hsprotect.net" not in (frame.url or "") or "challenge" not in (frame.url or ""):
+            continue
+        for sel in ('button[role="button"]', "#px-captcha", 'button:has-text("Press and hold")'):
+            try:
+                el = frame.locator(sel).first
+                if await el.count() > 0:
+                    box = await el.bounding_box()
+                    if box and box["width"] > 30 and box["height"] > 8:
+                        return box, True
+            except Exception:
+                pass
+
+    # 2) fallback: frame hsprotect yang visible
+    for frame in page.frames:
+        if "hsprotect.net" not in (frame.url or ""):
             continue
         try:
-            button = frame.locator("#px-captcha").first
-            if await button.count() > 0:
-                box = await button.bounding_box()
+            # nested iframe yang TIDAK display:none
+            for i in range(await frame.locator("iframe").count()):
+                iframe = frame.locator("iframe").nth(i)
+                box = await iframe.bounding_box()
                 if box and box["width"] > 30 and box["height"] > 8:
-                    return box, True
+                    # cek display style
+                    disp = await iframe.evaluate("el => getComputedStyle(el).display")
+                    if disp != "none":
+                        return box, True
+        except Exception:
+            pass
+        try:
+            box = await frame.locator("#px-captcha").first.bounding_box()
+            if box and box["width"] > 30 and box["height"] > 8:
+                # verifikasi inner iframe visible
+                inner = frame.locator("#px-captcha iframe").first
+                if await inner.count() > 0:
+                    disp = await inner.evaluate("el => getComputedStyle(el).display")
+                    if disp != "none":
+                        return box, True
         except Exception:
             pass
 
+    # 3) main frame: button langsung (accessible challenge)
+    try:
+        for sel in (
+            'button:has-text("Press and hold")',
+            'button:has-text("Appuyer et maintenir")',
+            'button:has-text("按住")',
+            'button:has-text("长按")',
+        ):
+            el = page.locator(sel).first
+            if await el.count() > 0:
+                box = await el.bounding_box()
+                if box and box["width"] > 30 and box["height"] > 8:
+                    return box, True
+    except Exception:
+        pass
+
+    # 4) fallback lama: iframe hsprotect bounding box
     try:
         frames = page.locator('iframe[src*="hsprotect.net"]')
         for index in range(await frames.count()):
@@ -93,6 +142,23 @@ async def press_and_hold(page, *, label="", press_number=1):
     async def hold_done():
         return not await captcha_visible(page)
 
+    # R25-F1b: monitor POST ke collector hsprotect — kalau 0 POST dalam 3s,
+    # target salah (event tidak sampai) → abort cepat, jangan hold buta.
+    post_seen = {"n": 0}
+    original_send = None
+
+    async def _monitor(resp):
+        try:
+            if "hsprotect.net/api" in (resp.url or "") and resp.request.method == "POST":
+                post_seen["n"] += 1
+        except Exception:
+            pass
+
+    try:
+        page.on("response", _monitor)
+    except Exception:
+        pass
+
     try:
         held, passed = await human_mouse.human_press_and_hold(
             page,
@@ -116,6 +182,18 @@ async def press_and_hold(page, *, label="", press_number=1):
             except Exception:
                 pass
             held, passed = 12.0, False
+
+    try:
+        page.remove_listener("response", _monitor)
+    except Exception:
+        pass
+
+    # R25-F1b: 0 POST ke collector selama hold = event tidak sampai PX JS
+    # (target kosong/iframe hidden) — tandai box_is_button=False supaya
+    # caller bisa fallback ke target lain.
+    if post_seen["n"] == 0:
+        print(f"{label} ⚠ 0 POST ke hsprotect collector selama hold — target mungkin kosong")
+        box_is_button = False
 
     print(f"{label} held {held:.1f}s{' (passed)' if passed else ''}")
     return {
