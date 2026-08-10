@@ -53,6 +53,10 @@ SMS5SIM_TOKEN=         # device challenge phone — 5sim.net (murah, JSON, filte
 SMSPOOL_KEY=           # fallback non-VoIP US (publish success rate 51%)
 OUTLOOK_GRAPH_RECOVERY_PROVIDER=yyds,gptmail   # recovery email temp chain
 OUTLOOK_NO_BITBROWSER=1                        # VPS mode
+OUTLOOK_WARMUP_DELAY=30        # IP warmup delay (s) sebelum register — turunkan device-challenge
+OUTLOOK_WARMUP_TRAFFIC=1       # 1 = kirim 2 request benign (bing/msn) via proxy dulu
+HUMAN_MOUSE_ENGINE=sigmadrift  # sigmadrift (default, biomechanical) | windmouse (fallback)
+OUTLOOK_SKIP_PROBE=0           # 1 = skip probe proxy ke signup.live.com
 ```
 
 ## Rate limit (penting!)
