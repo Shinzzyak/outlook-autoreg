@@ -3002,6 +3002,28 @@ async def register_one(bb, idx, proxy_str, results, results_lock, live_fh=None, 
         except Exception as e:
             print(f"  {tag} probe error: {str(e)[:100]} — lanjut tanpa probe")
 
+    # DD9-A: IP warmup — delay + traffic benign sebelum register biar IP
+    # tidak langsung kena rate-limit/challenge. OUTLOOK_WARMUP_DELAY (s),
+    # OUTLOOK_WARMUP_TRAFFIC=1 untuk request benign (default on).
+    try:
+        warmup_s = float(os.environ.get("OUTLOOK_WARMUP_DELAY", "30") or "30")
+        if warmup_s > 0:
+            print(f"  {tag} warmup: menunggu {warmup_s:.0f}s (IP settle)...")
+            await asyncio.sleep(warmup_s)
+        if os.environ.get("OUTLOOK_WARMUP_TRAFFIC", "1") != "0" and proxy_str:
+            import requests as _rq
+            def _benign():
+                for url in ("https://www.bing.com/", "https://www.msn.com/"):
+                    try:
+                        _rq.get(url, proxies=_proxy_for_requests(proxy_str), timeout=10,
+                                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36"})
+                    except Exception:
+                        pass
+            await asyncio.to_thread(_benign)
+            print(f"  {tag} warmup: benign traffic OK")
+    except Exception as e:
+        print(f"  {tag} warmup skip: {str(e)[:80]}")
+
     try:
         # ── 1. Protocol mode (pure HTTP, ~50KB) ──────────────────
         if mode in ("auto", "protocol"):
