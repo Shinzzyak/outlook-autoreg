@@ -2,81 +2,73 @@
 
 Auto-create Microsoft/Outlook accounts via stealth browser, with built-in CAPTCHA solving.
 
-**Fork dari [tiantianGPU/reg-factory](https://github.com/tiantianGPU/reg-factory)** (educational license) — diadaptasi:
-- **Playwright → patchright** (anti-detect fork, drop-in)
-- **VPS mode** (`OUTLOOK_NO_BITBROWSER=1`): skip BitBrowser, headless only
-- **Graph token**: HTTP fallback di VPS (tanpa browser)
+**Fork dari [tiantianGPU/reg-factory](https://github.com/tiantianGPU/reg-factory)** — mesin
+anti-bot yang terbukti produksi (PerimeterX press-and-hold + Arkose FunCaptcha + Graph
+OAuth token), diadaptasi ke **Patchright** (anti-detect Playwright) supaya jalan di VPS
+headless tanpa BitBrowser.
 
 ## Kemampuan
 
-| Kemampuan | Metode |
+| Fitur | Detail |
 |---|---|
-| **Auto-create Outlook** | patchright headless + stealth init-script, form fill, humanized |
-| **PerimeterX hsprotect** (press-and-hold) | WindMouse + OU tremor, tahan 11-15s, retry 5-15x |
-| **Arkose FunCaptcha** | CapSolver / EZ-Captcha API (`FunCaptchaTaskProxyLess`) |
-| **Cloudflare Turnstile** (downstream) | `turnstile/` solver — patchright click checkbox + token extraction |
-| **Graph refresh token** | OAuth auth-code flow pure HTTP (VPS) / browser (lokal) |
+| **Auto-register Outlook** | `register_outlook.py` — alur lengkap: form → captcha → profil → akun |
+| **PerimeterX press-and-hold** | `common/outlook_press.py` — WindMouse + OU tremor, tahan 11–15s |
+| **Arkose FunCaptcha solver** | CapSolver / EZ-Captcha + inject token (CE_READY/fc-token/fcCallback) |
+| **Turnstile solver** | `turnstile/` — checkbox click + token extraction (untuk situs downstream) |
+| **Device challenge** | recovery email temp (YYDS/GPTMail/MoeMail) + SMS (5sim/SMSPool) |
+| **Graph OAuth token** | `graph_tokens.py` — refresh_token via Thunderbird public client |
+| **API server** | `api_server.py` — Quart: `/register`, `/solve/turnstile`, `/solve/arkose` |
 
-## Setup
+## Quick start
 
 ```bash
-python3 -m venv venv
-./venv/bin/pip install -r requirements.txt
+python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
 ./venv/bin/patchright install chromium
-cp .env.example .env  # isi API keys (opsional)
+
+# CLI — register 5 akun, serial, tanpa BitBrowser (VPS mode)
+OUTLOOK_NO_BITBROWSER=1 ./venv/bin/python register_outlook.py --count 5 --no-proxy
+
+# API server
+OUTLOOK_NO_BITBROWSER=1 ./venv/bin/python api_server.py --port 8000
+curl -X POST localhost:8000/register -H 'Content-Type: application/json' \
+  -d '{"count":1,"proxy":"http://user:pass@host:port"}'
+curl -X POST localhost:8000/solve/turnstile -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com","sitekey":"0x4AAAA..."}'
 ```
 
-## Usage
+## Mode browser
 
-```bash
-# 10 akun, 2 koncurrency, proxy file
-OUTLOOK_NO_BITBROWSER=1 ./venv/bin/python register_outlook.py --count 10 --concurrency 2 --proxy-file proxies.txt
+| Mode | Kapan |
+|---|---|
+| `--mode headless` (default di VPS) | Tanpa BitBrowser, patchright stealth — disarankan VPS |
+| `--mode protocol` | Pure-HTTP signup (tanpa browser) |
+| `--mode browser` | BitBrowser (butuh GUI lokal + BitBrowser API) |
 
-# 1 akun, no proxy (test)
-OUTLOOK_NO_BITBROWSER=1 ./venv/bin/python register_outlook.py --count 1 --no-proxy --mode headless
+## Konfigurasi (`.env`)
+
+```env
+CAPSOLVER_API_KEY=     # Arkose FunCaptcha solver (wajib kalau MS tampilkan Arkose)
+EZCAPTCHA_API_KEY=
+SMS5SIM_TOKEN=         # device challenge phone — 5sim.net (murah, JSON)
+SMSPOOL_KEY=           # fallback non-VoIP US
+OUTLOOK_GRAPH_RECOVERY_PROVIDER=yyds,gptmail   # recovery email temp chain
+OUTLOOK_NO_BITBROWSER=1                        # VPS mode
 ```
 
-Output: `outlook_accounts/` — `email----password----refresh_token----client_id`
+## Rate limit (penting!)
 
-### Argumen CLI
+- **1–2 akun per IP** — pakai proxy pool (rotasi per akun)
+- Serial > paralel — MS flag concurrency tinggi
+- Pacing 5s+ antar aksi
 
-| Flag | Default | Keterangan |
-|---|---|---|
-| `--count, -n` | 10 | Jumlah akun |
-| `--concurrency, -c` | 2 | Paralel (max 3-5 — MS rate limit keras) |
-| `--proxy-file, -p` | — | 1 proxy/line (`user:pass@host:port`) |
-| `--no-proxy` | false | Tanpa proxy |
-| `--timeout, -t` | 300 | Timeout per akun |
-| `--mode` | auto | `auto`/`protocol`/`headless`/`browser` |
+## Catatan teknis
 
-## Rate limit Microsoft (dari pengalaman produksi reg-factory)
+- Signup form Microsoft berubah (2026): input email `name=email` (bukan `MemberName`) —
+  selector multi-fallback sudah handle
+- `verify_registered_outlook` default-fail kalau modul check hilang (P1-3) — akun gagal
+  tidak pernah diekspor sebagai sukses
+- Proxy creds **tidak pernah di-hardcode** — selalu dari env (P1-4)
 
-- **1-2 akun per IP** — setelah itu PerimeterX ERR_CONNECTION_CLOSED, WAJIB ganti proxy
-- **Serial lebih aman** daripada concurrency tinggi
-- **5s+ delay** antar attempt
-- IP datacenter = langsung challenge berat; residential wajib untuk skala
+## Lisensi
 
-## Turnstile solver (downstream)
-
-```python
-from turnstile.solve import solve_route
-token, _ = await solve_route(page, url="https://target.site", sitekey="SITE_KEY")
-```
-
-## Struktur
-
-```
-register_outlook.py   # main: flow signup + CLI
-reg_loop.py           # loop batch
-graph_tokens.py       # OAuth refresh token extraction
-agent_captcha.py      # CapSolver/EZ-Captcha/vision
-config.py             # env config + API keys
-common/outlook_press.py   # PerimeterX press-and-hold
-common/human_mouse.py     # WindMouse + OU tremor
-turnstile/            # Cloudflare Turnstile solver (dari toolkit)
-outlook_accounts/     # output akun
-```
-
-## Disclaimer
-
-Educational. Melanggar ToS Microsoft — akun bisa di-ban massal. Jangan untuk spam/phishing.
+Kode inti dari reg-factory (educational use). Lihat `LICENSE` upstream.
