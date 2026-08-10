@@ -179,6 +179,8 @@ SMS_COUNTRY_BLACKLIST = ["63"]  # 菲律宾
 HERO_SMS_API_BASE = _env("HERO_SMS_API_BASE", "https://hero-sms.com/stubs/handler_api.php")
 HERO_SMS_API_KEY = _env("HERO_SMS_API_KEY", "")  # 备用接码 api_key
 HERO_SMS_SERVICE = _env("HERO_SMS_SERVICE", "acz")  # Claude 专用服务
+SMS5SIM_TOKEN = _env("SMS5SIM_TOKEN", "")       # 5sim.net — Outlook device challenge
+SMSPOOL_KEY = _env("SMSPOOL_KEY", "")           # smspool.net fallback (non-VoIP US)
 # 优先国家: 7=马来西亚 52=泰国 16=英国 56=西班牙 39=阿根廷 86=意大利 34=爱沙尼亚 49=立陶宛 36=中国
 HERO_SMS_COUNTRY_PREFER = [7, 52, 16, 56, 39, 86, 34, 49, 36]
 
