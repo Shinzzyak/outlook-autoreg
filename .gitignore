@@ -2,8 +2,17 @@ venv/
 __pycache__/
 *.pyc
 .env
+.env.local
+local.env
+dev.env
 outlook_accounts/
 screenshots_outlook/
 cookies/
 tokens/
+sessions/
 *.png
+*.log
+proxies*.txt
+accounts*.txt
+graph_tokens*.json
+output/

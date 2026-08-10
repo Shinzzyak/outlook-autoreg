@@ -21,6 +21,7 @@ import argparse
 import asyncio
 import hmac
 import os
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -35,6 +36,7 @@ TASK_TTL_S = 3600
 API_TOKEN = os.environ.get("API_TOKEN", "")
 _MAX_CONCURRENCY = max(1, int(os.environ.get("REG_MAX_CONCURRENCY", "2")))
 _sem = asyncio.Semaphore(_MAX_CONCURRENCY)
+_pacing_lock = asyncio.Lock()  # R5-6: pacing global antar register (min gap 5s)
 
 
 def _now():
@@ -109,6 +111,15 @@ async def register():
         bb = BitBrowserClient()
         results, lock = [], asyncio.Lock()
         try:
+            # R5-6: pacing global antar akun — MS flag based on account patterns,
+            # bukan cuma per-IP; minimal gap 5s antar register
+            async with _pacing_lock:
+                _last_start = getattr(_pacing_lock, "_last_start", 0.0)
+                now = time.monotonic()
+                gap = 5.0 - (now - _last_start)
+                if gap > 0:
+                    await asyncio.sleep(gap)
+                _pacing_lock._last_start = time.monotonic()
             async with _sem:  # T-03: bounded concurrency
                 email, password = await asyncio.wait_for(
                     register_one(bb, 0, proxy, results, lock, mode=mode),

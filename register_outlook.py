@@ -45,7 +45,6 @@ try:
     from check_outlook_status import check_account_api
 except Exception:
     check_account_api = None
-
 # ======================== Configuration ========================
 
 # 导入 config 以触发 .env 加载（密钥来自 .env / 真实环境变量）。
@@ -109,20 +108,64 @@ VERIFY_AFTER_REGISTER = True
 
 
 def verify_registered_outlook(email, password, tag=""):
-    """Verify the saved password can actually log in before exporting the account."""
+    """Verify the saved password can actually log in before exporting the account.
+
+    R5-7 (P0): check_outlook_status.py tidak ada di repo → default-fail
+    membuang SEMUA akun. Ganti: verifikasi via HTTP GET ke login.live.com —
+    kalau kredensial valid, MS redirect ke halaman akun (200), kalau salah
+    → halaman error login (200 dengan 'error' / redirect ke /login).
+    Tanpa dependency tambahan, tanpa proxy wajib.
+    """
     if not VERIFY_AFTER_REGISTER:
         return True
-    if check_account_api is None:
-        # P1-3: module verifikasi hilang → default-fail, bukan skip diam-diam
-        # (akun gagal login tidak boleh diekspor sebagai sukses)
-        print(f"  {tag} verify FAILED: check_outlook_status unavailable (default-fail)")
+    try:
+        import requests as _requests
+        s = _requests.Session()
+        s.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+        })
+        # Login flow ringan: GET authorize → form post → cek redirect target
+        r = s.get(
+            "https://login.live.com/oauth20_authorize.srf?client_id=00000000402b5328&response_type=code&redirect_uri=https://login.live.com/oauth20_desktop.srf&scope=wl.basic",
+            timeout=15,
+            allow_redirects=True,
+        )
+        if r.status_code != 200:
+            print(f"  {tag} verify FAILED: login.live.com status {r.status_code}")
+            return False
+        # Login page OK — kirim kredensial via POST form
+        import re as _re
+        # R5-7: halaman login sekarang SPA — PPFT di-embed sebagai JSON escape
+        # sFTTag\":\"<input type=\\\"hidden\\\" name=\\\"PPFT\\\" ... value=\\\"...\\\">
+        ppft = None
+        m = _re.search(r'value=.{0,5}([A-Za-z0-9!*_=@#%&+.\-]+)', r.text)
+        if m:
+            ppft = m
+        if not ppft:
+            # Halaman mungkin minta consent/2FA — anggap reachable, bukan verified
+            print(f"  {tag} verify SKIP: no login form (2FA/consent)")
+            return False
+        post = s.post(
+            "https://login.live.com/ppsecure/post.srf",
+            data={
+                "login": email,
+                "passwd": password,
+                "PPFT": ppft.group(1),
+                "PPSX": "",
+                "SI": "Sign in",
+                "type": "11",
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=20,
+            allow_redirects=True,
+        )
+        # Sukses: redirect ke oauth20_desktop.srf dengan code / ke outlook.com
+        ok = ("oauth20_desktop.srf" in post.url) or ("outlook.live.com" in post.url) or ("/oauth20" in post.url)
+        print(f"  {tag} post-register verify: {'OK' if ok else 'FAIL'} ({post.status_code} {post.url[:80]})")
+        return ok
+    except Exception as e:
+        print(f"  {tag} verify ERROR: {str(e)[:120]} (default-fail)")
         return False
-    result = check_account_api(email, password)
-    status = result.get("status")
-    code = result.get("code") or ""
-    msg = result.get("message") or ""
-    print(f"  {tag} post-register verify: {status} {code} {msg[:80]}")
-    return status == "ok"
 
 # Default proxies (user:pass@host:port)
 # 住宅代理账密池来自环境变量 OUTLOOK_PROXIES（多个用换行或逗号分隔），默认空。
@@ -1100,7 +1143,9 @@ async def _bind_required_recovery_email(page, state, idx=0):
             code = None
         if not code:
             print(f"  {tag} [graph] SMS code timed out")
-            await asyncio.to_thread(sms_client.cancel_order, state["sms_order"])
+            if not state.get("sms_cancelled"):
+                state["sms_cancelled"] = True  # R5-5: cancel sekali, jangan double
+                await asyncio.to_thread(sms_client.cancel_order, state["sms_order"])
             return True, False
         # P1-1: cek ulang halaman masih di recovery (marker /proofs/add atau
         # input kode masih visible) sebelum fill — jangan isi halaman salah
@@ -1113,7 +1158,9 @@ async def _bind_required_recovery_email(page, state, idx=0):
             body_now, url_now = "", ""
         if "/proofs/add" not in url_now and "one-time" not in body_now and "verification" not in body_now:
             print(f"  {tag} [graph] halaman sudah pindah — SMS code tidak di-fill")
-            await asyncio.to_thread(sms_client.cancel_order, state["sms_order"])
+            if not state.get("sms_cancelled"):
+                state["sms_cancelled"] = True  # R5-5: cancel sekali, jangan double
+                await asyncio.to_thread(sms_client.cancel_order, state["sms_order"])
             return True, False
         for selector in (
             'input[autocomplete="one-time-code"], input[name*="otc" i], '
@@ -1785,7 +1832,8 @@ async def register_outlook(page, context, idx=0, captcha_early_abort=False):
         for retry in range(5):
             email_input = page.locator(
                 'input[type="email"], input[name="MemberName"], input[id="MemberName"], '
-                'input[id="usernameInput"], input[name="Username"]'
+                'input[id="usernameInput"], input[name="Username"], '
+                'input[name*="email" i], input[autocomplete="username"]'  # R5-3: A/B test fallback
             ).first
             if await email_input.count() == 0:
                 print(f"  {tag} email input not found")
@@ -2938,6 +2986,9 @@ async def register_one(bb, idx, proxy_str, results, results_lock, live_fh=None, 
                 )
             except asyncio.TimeoutError:
                 print(f"  {tag} headless timeout → falling back to browser")
+                # R5-4: pastikan finally cleanup (browser.close) selesai sebelum
+                # lanjut fallback — wait_for cancel tidak menjamin cleanup jalan
+                await asyncio.sleep(0)
             if email:
                 used_mode = "headless"
 

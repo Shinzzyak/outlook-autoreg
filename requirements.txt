@@ -1,5 +1,5 @@
 patchright>=1.49
 requests
 quart
-rich
-psutil
+aiohttp
+Pillow
