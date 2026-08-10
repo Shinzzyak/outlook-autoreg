@@ -2706,14 +2706,18 @@ async def _register_one_headless(idx, proxy_str):
                 )
                 print(f"  {tag} using Playwright Chromium (headless, no window)")
 
+            # R5-8b: headless Chrome tetap harus UA Chrome asli — HeadlessChrome
+            # di UA = sinyal deteksi klasik (baseline anti-detect menunjukkan
+            # headless_ua=true). Bundle binary Chromium 149 → UA 149.
+            _CHROME_UA = (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/149.0.0.0 Safari/537.36"
+            )
             context = await browser.new_context(
                 viewport={"width": 1280, "height": 800},
                 locale="en-US",
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/136.0.0.0 Safari/537.36"
-                ),
+                user_agent=_CHROME_UA,
             )
             page = await context.new_page()
 
