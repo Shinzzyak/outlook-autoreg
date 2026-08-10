@@ -904,6 +904,9 @@ async def _signup_email_rejected(page, email_input):
     if state.get("invalid"):
         return "format"
     # Remaining on the alias field after submit normally means the alias was rejected.
+    # R25-P0-1: jangan asal "taken" kalau field masih visible — SPA transisi lambat,
+    # field tetap visible sesaat setelah submit padahal valid. Butuh marker teks
+    # "taken/already/used" di message/aria.
     if state.get("visible"):
         message = state.get("message") or ""
         format_markers = (
@@ -913,7 +916,17 @@ async def _signup_email_rejected(page, email_input):
         )
         if any(marker in message for marker in format_markers):
             return "format"
-        return "taken"
+        taken_markers = (
+            "taken", "already", "used", "in use", "exist", "unavailable",
+            "已经被", "已注册", "已被", "已被使用", "사용", "已用", "重复",
+            "déjà", "ya existe", "ya está", "bereits", "già", "al gebruikt",
+            "уже", "zaten", "wurde bereits",
+        )
+        if any(marker in message for marker in taken_markers):
+            return "taken"
+        # field visible TAPI tidak ada pesan error jelas → transisi SPA,
+        # bukan taken. Beri kesempatan: cek lagi nanti (return "" = lanjut).
+        return ""
     return ""
 
 
@@ -2061,12 +2074,14 @@ async def register_outlook(page, context, idx=0, captcha_early_abort=False):
                 'input[type="text"][inputmode="numeric"], input[type="number"]'
             ).first
             # Fallback: find the text input that's NOT already filled
+            # R25-P1-3: batasi ke numeric inputmode / container bday — layout A/B
+            # bisa punya username field sebelum bday (field kosong pertama = salah)
             if await year_input.count() == 0:
-                all_text = page.locator('input[type="text"]')
+                all_text = page.locator('input[type="text"][inputmode="numeric"], input[inputmode="numeric"], [id*="Birth" i] input[type="text"]')
                 for ti in range(await all_text.count()):
                     inp = all_text.nth(ti)
                     val = await inp.input_value()
-                    if not val:  # empty text input = likely year
+                    if not val:  # empty numeric text input = likely year
                         year_input = inp
                         break
             if await year_input.count() > 0:
