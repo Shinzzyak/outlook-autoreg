@@ -20,8 +20,17 @@ BASE_5SIM = "https://5sim.net/v1"
 BASE_SMSPOOL = "https://api.smspool.net"
 
 
+_last_request = 0.0
+_REQUEST_GAP = 5.0  # DD8-B.5: 5sim rate-limit guest/API ~1 req/s — throttle 5s
+
+
 def request_sms(service="microsoft", country="usa", operator="any", provider="5sim"):
     """Beli nomor virtual. Return dict: {provider, order_id, phone}."""
+    global _last_request
+    gap = time.time() - _last_request
+    if gap < _REQUEST_GAP:
+        time.sleep(_REQUEST_GAP - gap)
+    _last_request = time.time()
     if provider == "5sim":
         token = os.environ.get("SMS5SIM_TOKEN", "")
         if not token:
