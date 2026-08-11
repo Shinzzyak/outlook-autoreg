@@ -2740,7 +2740,9 @@ def register_outlook_protocol(proxy_str=None, idx=0):
 # ======================== Headless Mode (Playwright, no BitBrowser) ========================
 
 # Headless: block everything heavy (CSS too, since rendering doesn't matter for detection)
-_BLOCK_TYPES_HEADLESS = {"image", "stylesheet", "font", "media", "other"}
+# R25-F11: JANGAN block "other" — beacon HIP (sendBeacon) = resource_type "other",
+# di-block → POST collector tidak pernah terkirim → 0 POST konsisten.
+_BLOCK_TYPES_HEADLESS = {"image", "stylesheet", "font", "media"}
 
 # Browser mode: keep CSS so PerimeterX doesn't detect missing stylesheets (captcha check)
 _BLOCK_TYPES_BROWSER = {"image", "font", "media"}
