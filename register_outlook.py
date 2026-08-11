@@ -2190,6 +2190,27 @@ async def register_outlook(page, context, idx=0, captcha_early_abort=False):
         print(f"  {tag} checking for captcha...")
         await asyncio.sleep(3)
 
+        # R25-F5: dump DOM frame hsprotect utk ground truth (debug)
+        if os.environ.get("OUTLOOK_DUMP_DOM") == "1":
+            try:
+                for f in page.frames:
+                    if "hsprotect.net" not in (f.url or ""):
+                        continue
+                    info = await f.evaluate("""() => {
+                        const out = [];
+                        for (const el of document.querySelectorAll('button, [role="button"], #px-captcha, [class*="btn"], [class*="hold"], [class*="captcha"]')) {
+                            const r = el.getBoundingClientRect();
+                            if (r.width < 10 || r.height < 5) continue;
+                            out.push({tag: el.tagName, id: el.id, cls: (el.className||'').toString().slice(0,50), role: el.getAttribute('role'), text: (el.textContent||'').trim().slice(0,30), x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height)});
+                        }
+                        return out;
+                    }""")
+                    print(f"  {tag} DOM hsprotect ({len(info)} elemen):")
+                    for i in info:
+                        print(f"    {i['tag']} id={i['id']!r} cls={i['cls']!r} role={i['role']} text={i['text']!r} box=({i['x']},{i['y']} {i['w']}x{i['h']})")
+            except Exception as e:
+                print(f"  {tag} DOM dump err: {e}")
+
         arkose_solved = False
         press_count = 0
         # headless: 5 presses max (abort quickly on fail)
