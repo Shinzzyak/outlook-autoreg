@@ -221,6 +221,13 @@ async def press_and_hold(page, *, label="", press_number=1):
     # R25-F1g (HUMAN deobf): hold TANPA tremor — mouseout/mouseleave = EVENT END
     # (Du). Tremor OU ±1.6px bikin cursor keluar bounds tombol → bar drain/reset.
     # Release HANYA setelah done (class btn_done / #checkmark / POST ocaptcha).
+    # R25-F3: pakai CDP Input.dispatchMouseEvent — page.mouse TIDAK tembus
+    # cross-origin iframe hsprotect di headless (0 POST collector).
+    cdp = None
+    try:
+        cdp = await page.context.new_cdp_session(page)
+    except Exception:
+        cdp = None
     try:
         held, passed = await human_mouse.human_press_and_hold(
             page,
@@ -232,6 +239,7 @@ async def press_and_hold(page, *, label="", press_number=1):
             max_hold=14.0,
             min_hold=0.5,
             tremor=0.0,  # kunci: diam total saat hold, jangan tremor
+            cdp=cdp,
         )
     except Exception as exc:
         message = f"{type(exc).__name__}: {exc}"

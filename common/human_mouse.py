@@ -184,7 +184,7 @@ def tremor_offsets(n, dt=0.05, theta=6.0, sigma=None, clamp=None, seed=None):
 
 async def human_press_and_hold(page, cx, cy, is_done=None, max_hold=14.0,
                                min_hold=1.5, check_interval=0.5, start=None,
-                               tremor=1.6):
+                               tremor=1.6, cdp=None):
     """拟人「按住验证」完整序列，返回 (held_seconds, passed_bool)。
 
     流程：WindMouse 逼近 (cx,cy) -> 落点前微停 -> mouse.down -> 按住期间走
@@ -196,15 +196,46 @@ async def human_press_and_hold(page, cx, cy, is_done=None, max_hold=14.0,
     = EVENT END → bar drain/reset. Tremor > 0 bikin cursor keluar bounds tombol.
     Untuk HUMAN captcha pakai tremor=0.0 (diam total saat hold).
 
+    cdp: optional CDP session (page.context.new_cdp_session(page)). Kalau ada,
+    pakai Input.dispatchMouseEvent (browser-level, trusted, TEMBUS cross-origin
+    iframe hsprotect) — page.mouse.down() TIDAK tembus iframe di headless
+    (0 POST collector = event tidak sampai). R25-F3.
+
     is_done: async callable -> bool，返回 True 表示验证已过(captcha 消失)。传
     你自己的 _captcha_visible 取反即可。为 None 时按满 max_hold 松手。
     """
+    async def _down():
+        if cdp:
+            await cdp.send("Input.dispatchMouseEvent", {
+                "type": "mousePressed", "x": cx, "y": cy,
+                "button": "left", "clickCount": 1,
+            })
+        else:
+            await page.mouse.down()
+
+    async def _up():
+        if cdp:
+            await cdp.send("Input.dispatchMouseEvent", {
+                "type": "mouseReleased", "x": cx, "y": cy,
+                "button": "left", "clickCount": 1,
+            })
+        else:
+            await page.mouse.up()
+
+    async def _move(x, y):
+        if cdp:
+            await cdp.send("Input.dispatchMouseEvent", {
+                "type": "mouseMoved", "x": x, "y": y,
+            })
+        else:
+            await page.mouse.move(x, y)
+
     # 1) 逼近（WindMouse）
     await human_move_to(page, cx, cy, start=start)
     # 2) 落点前的自然停顿（真人手到按钮上会顿一下再按）
     await asyncio.sleep(random.uniform(0.12, 0.35))
     # 3) 按下
-    await page.mouse.down()
+    await _down()
 
     loop = asyncio.get_event_loop()
     t0 = loop.time()
@@ -225,7 +256,7 @@ async def human_press_and_hold(page, cx, cy, is_done=None, max_hold=14.0,
                 tre = tremor_offsets(64, dt=tick)
                 ti = 0
             dx, dy = tre[ti]; ti += 1
-            await page.mouse.move(cx + dx, cy + dy)
+            await _move(cx + dx, cy + dy)
 
         # 进度满(captcha 消失)后加真人反应延迟再松手；至少按住 min_hold
         if is_done is not None and elapsed > min_hold and (elapsed - last_check) > check_interval:
@@ -242,7 +273,7 @@ async def human_press_and_hold(page, cx, cy, is_done=None, max_hold=14.0,
 
     # 4) 松手前的极短停顿 + 松手
     await asyncio.sleep(random.uniform(0.03, 0.12))
-    await page.mouse.up()
+    await _up()
     held = loop.time() - t0
     _debug(f"hold {held:.1f}s passed={passed}")
     return held, passed
