@@ -231,6 +231,14 @@ async def press_and_hold(page, *, label="", press_number=1):
     post_seen = {"n": 0, "ocaptcha": 0}
     original_send = None
 
+    # R25-F10: console + pageerror listener (script HIP bisa silent-fail)
+    if os.environ.get("OUTLOOK_DUMP_DOM") == "1":
+        try:
+            page.on("console", lambda msg: print(f"{label} [console:{msg.type}] {msg.text[:150]}") if msg.type in ("error", "warning") else None)
+            page.on("pageerror", lambda exc: print(f"{label} [pageerror] {str(exc)[:200]}"))
+        except Exception:
+            pass
+
     async def _monitor(resp):
         try:
             url = resp.url or ""
