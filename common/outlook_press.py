@@ -270,30 +270,34 @@ async def press_and_hold(page, *, label="", press_number=1):
     cdp = None
     frame_relative = False
     cdp_x = cdp_y = None
-    try:
-        if target_frame is not None:
-            # R25-F6: attach CDP ke FRAME hsprotect langsung — event di-generate
-            # di konteks frame (tembus OOPIF). bounding_box() Playwright =
-            # viewport-relative; CDP frame session butuh frame-relative →
-            # hitung via getBoundingClientRect di dalam frame.
-            cdp = await page.context.new_cdp_session(target_frame)
-            frame_relative = True
-            try:
-                fr = await target_frame.evaluate("""() => {
-                    const el = document.querySelector('#px-captcha, button[role="button"]');
-                    if (!el) return null;
-                    const r = el.getBoundingClientRect();
-                    return {x: r.x, y: r.y, w: r.width, h: r.height};
-                }""")
-                if fr and fr["w"] > 10:
-                    cdp_x = fr["x"] + fr["w"] * 0.5
-                    cdp_y = fr["y"] + fr["h"] * 0.5
-            except Exception:
-                pass
-        else:
-            cdp = await page.context.new_cdp_session(page)
-    except Exception:
-        cdp = None
+    # R25-F13: OUTLOOK_CDP=0 → pakai page.mouse (browser hit-testing, tembus
+    # iframe di headed mode). CDP frame session belum terbukti generate
+    # PointerEvent yang benar di OOPIF.
+    if os.environ.get("OUTLOOK_CDP") != "0":
+        try:
+            if target_frame is not None:
+                # R25-F6: attach CDP ke FRAME hsprotect langsung — event di-generate
+                # di konteks frame (tembus OOPIF). bounding_box() Playwright =
+                # viewport-relative; CDP frame session butuh frame-relative →
+                # hitung via getBoundingClientRect di dalam frame.
+                cdp = await page.context.new_cdp_session(target_frame)
+                frame_relative = True
+                try:
+                    fr = await target_frame.evaluate("""() => {
+                        const el = document.querySelector('#px-captcha, button[role="button"]');
+                        if (!el) return null;
+                        const r = el.getBoundingClientRect();
+                        return {x: r.x, y: r.y, w: r.width, h: r.height};
+                    }""")
+                    if fr and fr["w"] > 10:
+                        cdp_x = fr["x"] + fr["w"] * 0.5
+                        cdp_y = fr["y"] + fr["h"] * 0.5
+                except Exception:
+                    pass
+            else:
+                cdp = await page.context.new_cdp_session(page)
+        except Exception:
+            cdp = None
     try:
         held, passed = await human_mouse.human_press_and_hold(
             page,
