@@ -2757,23 +2757,27 @@ async def _register_one_headless(idx, proxy_str):
                 "--no-default-browser-check",
                 "--window-size=1280,800",
             ]
+            # R25-F4: OUTLOOK_HEADED=1 → headless=False (butuh compositor nyata
+            # utk hit-testing PerimeterX HIP; headless = 0 POST collector).
+            # Jalankan via xvfb-run di VPS: xvfb-run -a venv/bin/python ...
+            _headed = os.environ.get("OUTLOOK_HEADED") == "1"
             try:
                 # Prefer real Chrome binary (better fingerprint than bundled Chromium)
                 browser = await pw.chromium.launch(
                     channel="chrome",
-                    headless=True,
+                    headless=not _headed,
                     proxy=_proxy_for_playwright(proxy_str),
                     args=args,
                 )
-                print(f"  {tag} using real Chrome (headless, no window)")
+                print(f"  {tag} using real Chrome ({'headed' if _headed else 'headless'}, no window)")
             except Exception:
                 # Fallback to bundled Playwright Chromium
                 browser = await pw.chromium.launch(
-                    headless=True,
+                    headless=not _headed,
                     proxy=_proxy_for_playwright(proxy_str),
                     args=args,
                 )
-                print(f"  {tag} using Playwright Chromium (headless, no window)")
+                print(f"  {tag} using Playwright Chromium ({'headed' if _headed else 'headless'}, no window)")
 
             # R5-8b: headless Chrome tetap harus UA Chrome asli — HeadlessChrome
             # di UA = sinyal deteksi klasik (baseline anti-detect menunjukkan
