@@ -242,6 +242,10 @@ async def press_and_hold(page, *, label="", press_number=1):
                 # "hsprotect.net/api" mungkin salah — collector bisa di
                 # subdomain/path lain)
                 print(f"{label} POST {resp.request.method} {url[:120]}")
+            # R25-F9: log SEMUA request ke hsprotect (GET/POST) — tahu apakah
+            # script HIP jalan (harusnya ada GET init saat load)
+            if "hsprotect.net" in url and resp.request.method == "GET":
+                print(f"{label} GET {url[:120]}")
         except Exception:
             pass
 
