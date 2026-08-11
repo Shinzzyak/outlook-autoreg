@@ -2918,7 +2918,13 @@ async def _register_one_headless(idx, proxy_str):
             print(f"  {tag} headless browser ready (stealth+patches, no window)")
 
             # Block heavy resources to save bandwidth (headless doesn't need CSS for rendering)
-            await page.route("**/*", _block_heavy_resources)
+            # R25-F12: OUTLOOK_HEADED=1 → keep CSS (HIP butuh stylesheet utk
+            # inisialisasi/getComputedStyle; block stylesheet = script HIP gagal
+            # → 0 POST konsisten)
+            if _headed:
+                await page.route("**/*", _block_browser_resources)
+            else:
+                await page.route("**/*", _block_heavy_resources)
 
             # Abort early when captcha solvers fail so auto-mode falls back to BitBrowser fast
             email, password = await register_outlook(page, context, idx, captcha_early_abort=True)
