@@ -185,7 +185,7 @@ def tremor_offsets(n, dt=0.05, theta=6.0, sigma=None, clamp=None, seed=None):
 async def human_press_and_hold(page, cx, cy, is_done=None, max_hold=14.0,
                                min_hold=1.5, check_interval=0.5, start=None,
                                tremor=1.6, cdp=None, frame_relative=False,
-                               cdp_x=None, cdp_y=None):
+                               cdp_x=None, cdp_y=None, mid_screenshot=False):
     """拟人「按住验证」完整序列，返回 (held_seconds, passed_bool)。
 
     流程：WindMouse 逼近 (cx,cy) -> 落点前微停 -> mouse.down -> 按住期间走
@@ -251,6 +251,7 @@ async def human_press_and_hold(page, cx, cy, is_done=None, max_hold=14.0,
     tick = random.uniform(0.03, 0.07)
     passed = False
     last_check = 0.0
+    mid_shot_done = False
     tre = tremor_offsets(int(max_hold / tick) + 32, dt=tick)
     ti = 0
 
@@ -258,6 +259,13 @@ async def human_press_and_hold(page, cx, cy, is_done=None, max_hold=14.0,
         elapsed = loop.time() - t0
         if elapsed >= max_hold:
             break
+        # R25-F16: screenshot mid-hold (7s) utk verifikasi progress bar
+        if mid_screenshot and 6.5 < elapsed < 7.5 and not mid_shot_done:
+            try:
+                await page.screenshot(path="/tmp/outlook_mid_hold.png")
+                mid_shot_done = True
+            except Exception:
+                pass
         if tremor > 0:
             # R25-F1g: tremor=0 → diam total (mouseout = reset di HUMAN)
             if ti >= len(tre):

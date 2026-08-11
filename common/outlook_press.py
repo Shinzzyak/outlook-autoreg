@@ -306,13 +306,16 @@ async def press_and_hold(page, *, label="", press_number=1):
             is_done=hold_done,
             # R25-F1g: hold penuh sampai bar selesai (challengeTime server-driven,
             # biasanya 8-10s). JANGAN release paksa — release = bar drain + reset.
-            max_hold=14.0,
+            # R25-F16: HIP baru (animasi 3D kartu) challengeTime bisa lebih lama —
+            # naikkan ke 25s + screenshot mid-hold utk verifikasi progress.
+            max_hold=25.0,
             min_hold=0.5,
             tremor=0.0,  # kunci: diam total saat hold, jangan tremor
             cdp=cdp,
             frame_relative=frame_relative,
             cdp_x=cdp_x,
             cdp_y=cdp_y,
+            mid_screenshot=os.environ.get("OUTLOOK_DUMP_DOM") == "1",
         )
     except Exception as exc:
         message = f"{type(exc).__name__}: {exc}"
