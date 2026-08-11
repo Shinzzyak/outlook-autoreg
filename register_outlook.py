@@ -2196,18 +2196,38 @@ async def register_outlook(page, context, idx=0, captcha_early_abort=False):
                 for f in page.frames:
                     if "hsprotect.net" not in (f.url or ""):
                         continue
+                    # R25-F8: dump SEMUA elemen (bukan cuma button) + nested iframe
                     info = await f.evaluate("""() => {
                         const out = [];
-                        for (const el of document.querySelectorAll('button, [role="button"], #px-captcha, [class*="btn"], [class*="hold"], [class*="captcha"]')) {
+                        for (const el of document.querySelectorAll('*')) {
                             const r = el.getBoundingClientRect();
-                            if (r.width < 10 || r.height < 5) continue;
-                            out.push({tag: el.tagName, id: el.id, cls: (el.className||'').toString().slice(0,50), role: el.getAttribute('role'), text: (el.textContent||'').trim().slice(0,30), x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height)});
+                            if (r.width < 20 || r.height < 10) continue;
+                            const tag = el.tagName;
+                            const cls = (el.className || '').toString().slice(0, 40);
+                            const id = el.id || '';
+                            const role = el.getAttribute('role') || '';
+                            const text = (el.textContent || '').trim().slice(0, 20);
+                            out.push({tag, id, cls, role, text, x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height)});
                         }
                         return out;
                     }""")
-                    print(f"  {tag} DOM hsprotect ({len(info)} elemen):")
-                    for i in info:
+                    print(f"  {tag} DOM hsprotect ({len(info)} elemen, url={f.url[:80]}):")
+                    for i in info[:25]:
                         print(f"    {i['tag']} id={i['id']!r} cls={i['cls']!r} role={i['role']} text={i['text']!r} box=({i['x']},{i['y']} {i['w']}x{i['h']})")
+                    # nested iframe di dalam frame ini
+                    try:
+                        nif = await f.evaluate("""() => {
+                            const out = [];
+                            for (const ifr of document.querySelectorAll('iframe')) {
+                                const r = ifr.getBoundingClientRect();
+                                out.push({src: (ifr.src||'').slice(0,100), x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height), disp: getComputedStyle(ifr).display});
+                            }
+                            return out;
+                        }""")
+                        for i in nif:
+                            print(f"    IFRAME src={i['src']!r} box=({i['x']},{i['y']} {i['w']}x{i['h']}) disp={i['disp']}")
+                    except Exception as e:
+                        print(f"    iframe dump err: {e}")
             except Exception as e:
                 print(f"  {tag} DOM dump err: {e}")
 
