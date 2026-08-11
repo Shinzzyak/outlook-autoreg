@@ -9,6 +9,7 @@ from slowly diverging as Microsoft's challenge markup changes.
 from __future__ import annotations
 
 import asyncio
+import os
 import random
 
 from common import human_mouse
@@ -176,6 +177,32 @@ async def press_and_hold(page, *, label="", press_number=1):
 
     suffix = " [btn]" if box_is_button else " [box]"
     print(f"{label} press #{press_number}: ({cx:.0f},{cy:.0f}){suffix}")
+
+    # R25-F7: debug — elementFromPoint di koordinat press (cek overlay)
+    if os.environ.get("OUTLOOK_DUMP_DOM") == "1" and target_frame is not None:
+        try:
+            # koordinat frame-relative: cari elemen target di frame, hitung
+            # titik tengahnya, lalu elementFromPoint di titik itu
+            hit = await target_frame.evaluate("""() => {
+                const el = document.querySelector('#px-captcha, button[role="button"]');
+                if (!el) return 'no target';
+                const r = el.getBoundingClientRect();
+                const x = r.x + r.width * 0.5;
+                const y = r.y + r.height * 0.5;
+                const hitEl = document.elementFromPoint(x, y);
+                if (!hitEl) return 'null at ' + Math.round(x) + ',' + Math.round(y);
+                let chain = [];
+                let cur = hitEl;
+                while (cur && cur.tagName) {
+                    chain.push(cur.tagName + (cur.id ? '#' + cur.id : '') + (cur.className ? '.' + String(cur.className).slice(0,30) : ''));
+                    cur = cur.parentElement;
+                }
+                const hr = hitEl.getBoundingClientRect();
+                return {at: Math.round(x) + ',' + Math.round(y), tag: hitEl.tagName, id: hitEl.id, cls: String(hitEl.className).slice(0,50), chain: chain.join(' < '), box: Math.round(hr.x) + ',' + Math.round(hr.y) + ' ' + Math.round(hr.width) + 'x' + Math.round(hr.height)};
+            }""")
+            print(f"{label} elementFromPoint (frame-rel): {hit}")
+        except Exception as e:
+            print(f"{label} elementFromPoint err: {e}")
 
     async def hold_done():
         # R25-F1g: deteksi visual done — class btn_done / #checkmark di frame
