@@ -2837,6 +2837,13 @@ async def _register_one_headless(idx, proxy_str):
             )
             page = await context.new_page()
 
+            # R25-F19: console + pageerror listener SEJAK AWAL (sebelum navigasi)
+            # — error inisialisasi script HIP terjadi saat load, listener yang
+            # dipasang belakangan (di press_and_hold) ketinggalan.
+            if os.environ.get("OUTLOOK_DUMP_DOM") == "1":
+                page.on("console", lambda msg: print(f"  {tag} [console:{msg.type}] {msg.text[:200]}") if msg.type in ("error", "warning") else None)
+                page.on("pageerror", lambda exc: print(f"  {tag} [pageerror] {str(exc)[:250]}"))
+
             # playwright-stealth: patches navigator.webdriver, plugins, languages, etc.
             if _HAS_STEALTH:
                 await _stealth_obj.apply_stealth_async(page)
