@@ -2921,7 +2921,11 @@ async def _register_one_headless(idx, proxy_str):
             # R25-F12: OUTLOOK_HEADED=1 → keep CSS (HIP butuh stylesheet utk
             # inisialisasi/getComputedStyle; block stylesheet = script HIP gagal
             # → 0 POST konsisten)
-            if _headed:
+            # R25-F14: OUTLOOK_NO_BLOCK=1 → jangan pasang route handler sama
+            # sekali (test: apakah blocking masih mem-block resource HIP)
+            if os.environ.get("OUTLOOK_NO_BLOCK") == "1":
+                print(f"  {tag} NO resource blocking (OUTLOOK_NO_BLOCK=1)")
+            elif _headed:
                 await page.route("**/*", _block_browser_resources)
             else:
                 await page.route("**/*", _block_heavy_resources)
