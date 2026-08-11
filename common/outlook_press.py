@@ -50,20 +50,33 @@ async def find_hold_target(page):
     Return (box, is_button, target_frame) — target_frame utk press via frame."""
     # 1) child frames: cari tombol press-and-hold di dalam iframe hsprotect
     #    (URL frame challenge pakai ch_ctx=1, bukan "challenge")
+    #    R25-F2: pilih tombol TERBESAR di frame — button[role="button"] pertama
+    #    sering tombol aksesibilitas kecil (tooltip "Accessible challenge"),
+    #    bukan tombol HIP utama. Tombol HIP jauh lebih lebar (>200px).
     for frame in page.frames:
         if "hsprotect.net" not in (frame.url or ""):
             continue
         if "challenge" not in (frame.url or "") and "ch_ctx" not in (frame.url or ""):
             continue
-        for sel in ('button[role="button"]', "#px-captcha", 'button:has-text("Press and hold")'):
+        best = None
+        best_area = 0
+        for sel in ('button[role="button"]', "#px-captcha", 'button:has-text("Press and hold")', 'button:has-text("按住")'):
             try:
-                el = frame.locator(sel).first
-                if await el.count() > 0:
+                els = frame.locator(sel)
+                n = await els.count()
+                for i in range(min(n, 8)):
+                    el = els.nth(i)
                     box = await el.bounding_box()
-                    if box and box["width"] > 30 and box["height"] > 8:
-                        return box, True, frame
+                    if not box or box["width"] < 30 or box["height"] < 8:
+                        continue
+                    area = box["width"] * box["height"]
+                    if area > best_area:
+                        best_area = area
+                        best = (box, True, frame)
             except Exception:
                 pass
+        if best:
+            return best
 
     # 2) fallback: frame hsprotect yang visible
     for frame in page.frames:
