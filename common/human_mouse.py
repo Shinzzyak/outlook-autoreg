@@ -184,7 +184,8 @@ def tremor_offsets(n, dt=0.05, theta=6.0, sigma=None, clamp=None, seed=None):
 
 async def human_press_and_hold(page, cx, cy, is_done=None, max_hold=14.0,
                                min_hold=1.5, check_interval=0.5, start=None,
-                               tremor=1.6, cdp=None):
+                               tremor=1.6, cdp=None, frame_relative=False,
+                               cdp_x=None, cdp_y=None):
     """拟人「按住验证」完整序列，返回 (held_seconds, passed_bool)。
 
     流程：WindMouse 逼近 (cx,cy) -> 落点前微停 -> mouse.down -> 按住期间走
@@ -196,18 +197,25 @@ async def human_press_and_hold(page, cx, cy, is_done=None, max_hold=14.0,
     = EVENT END → bar drain/reset. Tremor > 0 bikin cursor keluar bounds tombol.
     Untuk HUMAN captcha pakai tremor=0.0 (diam total saat hold).
 
-    cdp: optional CDP session (page.context.new_cdp_session(page)). Kalau ada,
-    pakai Input.dispatchMouseEvent (browser-level, trusted, TEMBUS cross-origin
-    iframe hsprotect) — page.mouse.down() TIDAK tembus iframe di headless
-    (0 POST collector = event tidak sampai). R25-F3.
+    cdp: optional CDP session. Kalau ada, pakai Input.dispatchMouseEvent
+    (browser-level, trusted, TEMBUS cross-origin iframe hsprotect) —
+    page.mouse.down() TIDAK tembus iframe di headless (0 POST collector).
+    R25-F3.
+
+    frame_relative: True kalau cdp di-attach ke FRAME (OOPIF) — koordinat CDP
+    harus frame-relative. cdp_x/cdp_y: koordinat CDP (frame-relative) kalau
+    beda dari cx/cy (viewport). R25-F6.
 
     is_done: async callable -> bool，返回 True 表示验证已过(captcha 消失)。传
     你自己的 _captcha_visible 取反即可。为 None 时按满 max_hold 松手。
     """
+    px = cdp_x if cdp_x is not None else cx
+    py = cdp_y if cdp_y is not None else cy
+
     async def _down():
         if cdp:
             await cdp.send("Input.dispatchMouseEvent", {
-                "type": "mousePressed", "x": cx, "y": cy,
+                "type": "mousePressed", "x": px, "y": py,
                 "button": "left", "clickCount": 1,
             })
         else:
@@ -216,7 +224,7 @@ async def human_press_and_hold(page, cx, cy, is_done=None, max_hold=14.0,
     async def _up():
         if cdp:
             await cdp.send("Input.dispatchMouseEvent", {
-                "type": "mouseReleased", "x": cx, "y": cy,
+                "type": "mouseReleased", "x": px, "y": py,
                 "button": "left", "clickCount": 1,
             })
         else:

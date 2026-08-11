@@ -229,8 +229,30 @@ async def press_and_hold(page, *, label="", press_number=1):
     # R25-F3: pakai CDP Input.dispatchMouseEvent — page.mouse TIDAK tembus
     # cross-origin iframe hsprotect di headless (0 POST collector).
     cdp = None
+    frame_relative = False
+    cdp_x = cdp_y = None
     try:
-        cdp = await page.context.new_cdp_session(page)
+        if target_frame is not None:
+            # R25-F6: attach CDP ke FRAME hsprotect langsung — event di-generate
+            # di konteks frame (tembus OOPIF). bounding_box() Playwright =
+            # viewport-relative; CDP frame session butuh frame-relative →
+            # hitung via getBoundingClientRect di dalam frame.
+            cdp = await page.context.new_cdp_session(target_frame)
+            frame_relative = True
+            try:
+                fr = await target_frame.evaluate("""() => {
+                    const el = document.querySelector('#px-captcha, button[role="button"]');
+                    if (!el) return null;
+                    const r = el.getBoundingClientRect();
+                    return {x: r.x, y: r.y, w: r.width, h: r.height};
+                }""")
+                if fr and fr["w"] > 10:
+                    cdp_x = fr["x"] + fr["w"] * 0.5
+                    cdp_y = fr["y"] + fr["h"] * 0.5
+            except Exception:
+                pass
+        else:
+            cdp = await page.context.new_cdp_session(page)
     except Exception:
         cdp = None
     try:
@@ -245,6 +267,9 @@ async def press_and_hold(page, *, label="", press_number=1):
             min_hold=0.5,
             tremor=0.0,  # kunci: diam total saat hold, jangan tremor
             cdp=cdp,
+            frame_relative=frame_relative,
+            cdp_x=cdp_x,
+            cdp_y=cdp_y,
         )
     except Exception as exc:
         message = f"{type(exc).__name__}: {exc}"
