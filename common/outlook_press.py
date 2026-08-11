@@ -242,14 +242,14 @@ async def press_and_hold(page, *, label="", press_number=1):
     async def _monitor(resp):
         try:
             url = resp.url or ""
-            if resp.request.method == "POST" and ("hsprotect" in url or "px-captcha" in url or "captcha" in url):
+            # R25-F15: log SEMUA POST (bukan cuma hsprotect) — HIP baru bisa
+            # POST ke domain lain (collector.px-cloud.net, api.hsprotect.net,
+            # dll). Filter lama miss → "0 POST" padahal POST terkirim.
+            if resp.request.method == "POST":
                 post_seen["n"] += 1
                 if "ocaptcha" in url:
                     post_seen["ocaptcha"] += 1
-                # R25-F5: debug — log SEMUA POST captcha (filter lama
-                # "hsprotect.net/api" mungkin salah — collector bisa di
-                # subdomain/path lain)
-                print(f"{label} POST {resp.request.method} {url[:120]}")
+                print(f"{label} POST {url[:140]}")
             # R25-F9: log SEMUA request ke hsprotect (GET/POST) — tahu apakah
             # script HIP jalan (harusnya ada GET init saat load)
             if "hsprotect.net" in url and resp.request.method == "GET":
