@@ -178,8 +178,33 @@ async def press_and_hold(page, *, label="", press_number=1):
     suffix = " [btn]" if box_is_button else " [box]"
     print(f"{label} press #{press_number}: ({cx:.0f},{cy:.0f}){suffix}")
 
-    # R25-F7: debug — elementFromPoint di koordinat press (cek overlay)
+    # R25-F17: diagnosis — apakah script HIP attach listener di #px-captcha?
+    # Kalau 0 listener → masalah inisialisasi script, bukan event delivery.
     if os.environ.get("OUTLOOK_DUMP_DOM") == "1" and target_frame is not None:
+        try:
+            diag = await target_frame.evaluate("""() => {
+                const el = document.querySelector('#px-captcha');
+                if (!el) return {err: 'no #px-captcha'};
+                const out = {tag: el.tagName, id: el.id, cls: String(el.className).slice(0,60)};
+                // cek atribut style + inline handlers
+                out.style = el.getAttribute('style') || '';
+                out.onclick = typeof el.onclick;
+                out.onmousedown = typeof el.onmousedown;
+                out.onpointerdown = typeof el.onpointerdown;
+                // cek variabel global HIP
+                out.globals = Object.keys(window).filter(k => /px|hip|captcha|challenge/i.test(k)).slice(0, 20);
+                // cek child elements
+                out.children = Array.from(el.children).map(c => c.tagName + (c.id ? '#' + c.id : '') + (c.className ? '.' + String(c.className).slice(0,30) : '')).slice(0, 10);
+                // cek computed style
+                const cs = getComputedStyle(el);
+                out.cursor = cs.cursor;
+                out.bg = cs.backgroundImage.slice(0, 60);
+                out.overflow = cs.overflow;
+                return out;
+            }""")
+            print(f"{label} HIP diag: {diag}")
+        except Exception as e:
+            print(f"{label} HIP diag err: {e}")
         try:
             # koordinat frame-relative: cari elemen target di frame, hitung
             # titik tengahnya, lalu elementFromPoint di titik itu
