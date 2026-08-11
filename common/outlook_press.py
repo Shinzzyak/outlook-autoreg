@@ -195,6 +195,12 @@ async def press_and_hold(page, *, label="", press_number=1):
                 out.globals = Object.keys(window).filter(k => /px|hip|captcha|challenge/i.test(k)).slice(0, 20);
                 // cek child elements
                 out.children = Array.from(el.children).map(c => c.tagName + (c.id ? '#' + c.id : '') + (c.className ? '.' + String(c.className).slice(0,30) : '')).slice(0, 10);
+                // R25-F18: dump bounding box IFRAME child (tombol HIP sebenarnya)
+                const ifr = el.querySelector('iframe');
+                if (ifr) {
+                    const ir = ifr.getBoundingClientRect();
+                    out.iframe = {x: Math.round(ir.x), y: Math.round(ir.y), w: Math.round(ir.width), h: Math.round(ir.height), src: (ifr.src||'').slice(0,80), pe: getComputedStyle(ifr).pointerEvents};
+                }
                 // cek computed style
                 const cs = getComputedStyle(el);
                 out.cursor = cs.cursor;
